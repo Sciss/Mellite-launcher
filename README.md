@@ -25,5 +25,25 @@ This project builds with sbt against Scala 2.13 (JVM).
 
 ## notes
 
-The idea is that the launcher has almost zero dependencies, so there won't be a conflict with Mellite
-itself, and we rarely need to update the launcher itself. (self-update is currently not considered.)
+It's difficult to keep the classpath of the launcher and application itself separate; for example, once
+AWT is initialised, it cannot be "uninitialised", and thus adding a look-and-feel jar to classpath has no
+effect on the `UIManager` finding the new jar. Therefore, we spawn an entirely new process for the application,
+then close the splash screen and join the child process until its termination.
+
+-----
+
+## creating new releases
+
+This section is an aide-mémoire for me in releasing stable versions.
+
+- check that no `SNAPSHOT` versions of libraries are used: `cat build.sbt | grep SNAPSHOT`.
+   Change `projectVersion` appropriately.
+- check that libraries are up-to-date, and that there are no binary conflicts:
+   `sbt dependencyUpdates evicted`
+- Make sure the XFree desktop file version is set:
+   `vim app/src/debian/Mellite-launcher.desktop`
+- Update the release versions in `README.md`
+- Test the app building: `sbt app/clean app/update app/test`
+- Build the native image:
+    `sbt -java-home '/home/hhrutz/Downloads/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9_11/jdk-11.0.9+11' full/universal:packageBin full/debian:packageBin`
+  

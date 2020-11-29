@@ -44,12 +44,14 @@ class Splash extends JWindow {
     g2.setFont(fontBody)
     val fmBody  = g2.getFontMetrics()
 
-    if (_version != "") {
+//    if (_version != "")
+    {
       val bw = fmBody.stringWidth(_version)
       ty += 8
       g2.drawString(_version, (w - bw) >> 1, ty + fmBody.getAscent)
       ty += fmBody.getHeight
     }
+
     if (_status != "") {
       val bw = fmBody.stringWidth(_status)
       ty += 8

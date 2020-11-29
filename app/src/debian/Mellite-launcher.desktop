@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Mellite-launcher
+Version=0.1.0-SNAPSHOT
+GenericName=Mellite-launcher
+Comment=Mellite Computer Music Environment
+Exec=/usr/share/mellite-launcher/bin/mellite-launcher %F
+StartupWMClass=de-sciss-mellite-Mellite
+Icon=/usr/share/mellite-launcher/Mellite.png
+Categories=Audio;AudioVideo;Music
+Terminal=false
+Type=Application
