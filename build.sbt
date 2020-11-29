@@ -38,12 +38,7 @@ lazy val commonSettings = Seq(
   },
   javacOptions ++= Seq("-source", "1.8", "-target", "1.8"),
   updateOptions := updateOptions.value.withLatestSnapshots(false),
-  aggregate in assembly := false,
-)
-
-lazy val appSettings = Seq(
-  description := appDescription,
-  mainClass in Compile := Some(launcherMainClass),
+//  aggregate in assembly := false,
 )
 
 lazy val root = project.in(file("."))
@@ -56,9 +51,14 @@ lazy val root = project.in(file("."))
     publishArtifact in(Compile, packageBin) := false, // there are no binaries
     publishArtifact in(Compile, packageDoc) := false, // there are no javadocs
     publishArtifact in(Compile, packageSrc) := false, // there are no sources
-    packagedArtifacts := Map.empty,
+    // packagedArtifacts := Map.empty
     autoScalaLibrary := false
   )
+
+lazy val appSettings = Seq(
+  description := appDescription,
+  mainClass in Compile := Some(launcherMainClass),
+)
 
 lazy val app = project.in(file("app"))
   .enablePlugins(JavaAppPackaging, DebianPlugin)
@@ -66,10 +66,10 @@ lazy val app = project.in(file("app"))
   .settings(pkgUniversalSettings)
   .settings(pkgDebianSettings)
   .settings(useNativeZip) // cf. https://github.com/sbt/sbt-native-packager/issues/334
-  .settings(assemblySettings)
+//  .settings(assemblySettings)
   .settings(appSettings)
   .settings(
-    name          := s"$baseName-app",
+    name          := s"$baseName-app",  // must be different from baseName, otherwise root project overwrites jar
     libraryDependencies ++= Seq(
       "io.get-coursier" %% "coursier"     % deps.main.coursier,   // retrieving dependencies
       "net.harawata"    %  "appdirs"      % deps.main.appDirs,    // finding cache directory
@@ -107,13 +107,16 @@ lazy val full = project.in(file("full"))
   .settings(commonSettings)
   .settings(pkgUniversalSettings)
   .settings(pkgDebianSettings)
-  .settings(assemblySettings) // do we need this here?
+//  .settings(assemblySettings) // do we need this here?
   .settings(appSettings)
   .settings(
     name    := baseName,
     version := appVersion,
     jlinkIgnoreMissingDependency := JlinkIgnore.everything, // temporary for testing
-    jlinkModules += "jdk.unsupported", // needed for Akka
+    jlinkModules ++= Seq(
+      "jdk.unsupported", // needed for Akka
+      "java.management",
+    ),
     libraryDependencies ++= Seq("base", "swing", "controls", "graphics", "media", "web").map(jfxDep),
     packageName in Universal := s"${appNameL}_${version.value}_${jfxClassifier}_$archSuffix",
     name                in Debian := s"$appNameL",  // this is used for .deb file-name; NOT appName,
@@ -122,44 +125,27 @@ lazy val full = project.in(file("full"))
 
 // ---- packaging ----
 
-//////////////// fat-jar assembly
-lazy val assemblySettings = Seq(
-  mainClass             in assembly := Some(launcherMainClass),
-  target                in assembly := baseDirectory.value,
-  assemblyJarName       in assembly := s"$baseName.jar",
-  assemblyMergeStrategy in assembly := {
-    case PathList("org", "xmlpull", _ @ _*) => MergeStrategy.first
-    case PathList("org", "w3c", "dom", "events", _ @ _*) => MergeStrategy.first // bloody Apache Batik
-    case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.first
-    case x =>
-      val oldStrategy = (assemblyMergeStrategy in assembly).value
-      oldStrategy(x)
-  }
-)
+////////////////// fat-jar assembly
+//lazy val assemblySettings = Seq(
+//  mainClass             in assembly := Some(launcherMainClass),
+//  target                in assembly := baseDirectory.value,
+//  assemblyJarName       in assembly := s"$baseName.jar",
+//  assemblyMergeStrategy in assembly := {
+//    case PathList("org", "xmlpull", _ @ _*) => MergeStrategy.first
+//    case PathList("org", "w3c", "dom", "events", _ @ _*) => MergeStrategy.first // bloody Apache Batik
+//    case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.first
+//    case x =>
+//      val oldStrategy = (assemblyMergeStrategy in assembly).value
+//      oldStrategy(x)
+//  }
+//)
 
 //////////////// universal (directory) installer
 lazy val pkgUniversalSettings = Seq(
   executableScriptName /* in Universal */ := appNameL,
-  // NOTE: doesn't work on Windows, where we have to
-  // provide manual file `MELLITE_config.txt` instead!
-  // NOTE: This workaround for #70 is incompatible with Java 11...
-  // instead recommend to users of Linux with JDK 8 to create
-  // `~/.accessibility.properties`
-  //
-  //  javaOptions in Universal ++= Seq(
-  //    // -J params will be added as jvm parameters
-  //    // "-J-Xmx1024m",
-  //    // others will be added as app parameters
-  //    "-Djavax.accessibility.assistive_technologies=",  // work around for #70
-  //  ),
-  // Since our class path is very very long,
-  // we use instead the wild-card, supported
-  // by Java 6+. In the packaged script this
-  // results in something like `java -cp "../lib/*" ...`.
-  // NOTE: `in Universal` does not work. It therefore
-  // also affects debian package building :-/
-  // We need this settings for Windows.
-  scriptClasspath /* in Universal */ := Seq("*"),
+  // note: do not use wildcard script-classpath, as
+  // we need to be able to filter for openjfx jars
+//  scriptClasspath /* in Universal */ := Seq("*"),
   name                      in Linux     := appName,
   packageName               in Linux     := appNameL, // XXX TODO -- what was this for?
 //  mainClass                 in Universal := Some(launcherMainClass),

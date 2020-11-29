@@ -46,7 +46,7 @@ object Launcher {
   final val artifactId  = "mellite-app_2.13"
   final val mainClass   = "de.sciss.mellite.Mellite"
 
-  val DEBUG = true
+  val DEBUG = false
 
   private def run(splash: Splash): Unit = {
     import splash.status
@@ -141,14 +141,35 @@ object Launcher {
     }
 
     val futInst = futFiles.map { files =>
-      val extraCP = files.iterator.map(_.getPath)
+      val addCP   = files.iterator.map(_.getPath)
       val ph      = ProcessHandle.current()
       val pi      = ph.info()
       val cmd     = pi.command().get()
-      val args0   = pi.arguments().get()
-      val idxCP   = args0.indexOf("-classpath") + 1
-      val args1   = args0.init.patch(idxCP, extraCP.mkString(File.pathSeparator) :: Nil, 1) :+ mainClass
-      val pb      = new ProcessBuilder(cmd +: args1: _*)
+      val argsIn  = pi.arguments().get()
+
+      if (DEBUG)
+      {
+        println(s"CMD      = '$cmd''")
+        println(s"ARGS IN  = ${argsIn.mkString("'", "', '", "'")}")
+      }
+
+      val idxCP   = {
+        var i         = argsIn.indexOf("-classpath")
+        if (i < 0) i  = argsIn.indexOf("-cp")
+          require (i >= 0)
+        i + 1
+      }
+      val oldCP   = argsIn(idxCP).split(File.pathSeparatorChar)
+      val keepCP  = oldCP.filter(_.contains("/org.openjfx"))
+      val newCP   = keepCP ++ addCP
+      val argsOut = argsIn.init.patch(idxCP, newCP.mkString(File.pathSeparator) :: Nil, 1) :+ mainClass
+
+      if (DEBUG)
+      {
+        println(s"ARGS OUT = ${argsOut.mkString("'", "', '", "'")}")
+      }
+
+      val pb      = new ProcessBuilder(cmd +: argsOut: _*)
       pb.inheritIO()
       val p       = pb.start()
       p
@@ -162,9 +183,16 @@ object Launcher {
     }
 
     futErr.foreach { p =>
-      EventQueue.invokeLater(() => splash.dispose())
-      val code = p.waitFor()  // join child process
-      sys.exit(code)
+      val alive = new Thread(() => {
+        EventQueue.invokeLater(() => splash.dispose())
+        val code = p.waitFor()  // join child process
+        if (DEBUG) {
+          println(s"EXIT CODE $code")
+        }
+        sys.exit(code)
+      })
+      alive.setDaemon(false)
+      alive.start()
     }
   }
 }
