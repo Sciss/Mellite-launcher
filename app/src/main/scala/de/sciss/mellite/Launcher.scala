@@ -4,7 +4,7 @@
  *
  *  Copyright (c) 2020 Hanns Holger Rutz. All rights reserved.
  *
- *  This software is published under the GNU Affero General Public License v3+
+ *  This software is published under the GNU Lesser General Public License v2.1+
  *
  *
  *  For further information, please contact Hanns Holger Rutz at
@@ -20,10 +20,19 @@ import net.harawata.appdirs.AppDirsFactory
 
 import java.awt.EventQueue
 import java.io.File
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.duration.DurationInt
 
 object Launcher {
+  // eventually these could become settings of a generic launcher
+  final val groupId         = "de.sciss"
+  final val artifactId      = "mellite-app_2.13"
+  final val mainClass       = "de.sciss.mellite.Mellite"
+  final val classPathFilter = "/org.openjfx" :: Nil
+
+  final val DEBUG = false
+
   def main(args: Array[String]): Unit = {
 //    val parent    = getClass.getClassLoader
 //    val cl        = new URLClassLoader(new Array(0), parent)
@@ -42,12 +51,6 @@ object Launcher {
     }
   }
 
-  final val groupId     = "de.sciss"
-  final val artifactId  = "mellite-app_2.13"
-  final val mainClass   = "de.sciss.mellite.Mellite"
-
-  val DEBUG = false
-
   private def run(splash: Splash): Unit = {
     import splash.status
     val appDirs   = AppDirsFactory.getInstance
@@ -62,7 +65,7 @@ object Launcher {
 //    cacheDir.mkdirs()
 //    artDir  .mkdirs()
 
-    status = "Resolving libraries..."
+    status = "Checking version..."
     val cacheResolve = cache.FileCache[Task](cacheDir)
       .withTtl(1.hour)
     //      .withLogger(RefreshLogger.create(System.out))
@@ -110,19 +113,33 @@ object Launcher {
     }
 
     val futFetch = futLatest.flatMap { v =>
-      splash.version  = v
-      val dlLog = new CacheLogger {
-        override def downloadProgress(url: String, downloaded: Long): Unit = {
-        }
-      }
-      val cacheArt  = cache.FileCache[Task](artDir).withLogger(dlLog)
-      val artifacts = Artifacts().withCache(cacheArt)
+      splash.version = s"version $v"
+      status = "Resolving dependencies..."
       val appDep    = Dependency(appMod, v)
       val resolve   = Resolve(cacheResolve)
         .addDependencies(appDep)
-      val fetch     = new Fetch(resolve, artifacts, None)
-      status = "Fetching libraries..."
-      fetch.futureResult()
+      val cacheArt  = cache.FileCache[Task](artDir)
+      resolve.future().flatMap { resolution =>
+        status = "Fetching libraries..."
+//        status = "Resolving artifacts..."
+        val artifacts = Artifacts(cacheArt).withResolution(resolution)
+        val dlLog = new CacheLogger {
+          private val remain  = mutable.Set(resolution.artifacts().map(_.url): _*)
+          private val size    = remain.size
+
+          private def add(url: String): Unit = if (remain.remove(url)) {
+            val done = size - remain.size
+            val p = done.toFloat / size
+            splash.progress = p
+          }
+
+          override def foundLocally       (url: String)                   : Unit = add(url)
+          override def downloadedArtifact (url: String, success: Boolean) : Unit = add(url)
+        }
+        val cacheArtL = cacheArt.withLogger(dlLog)
+        val fetch = new Fetch(resolve, artifacts, None).withCache(cacheArtL)
+        fetch.futureResult()
+      }
     }
 
     val futFiles = futFetch.map { fetched =>
@@ -160,7 +177,7 @@ object Launcher {
         i + 1
       }
       val oldCP   = argsIn(idxCP).split(File.pathSeparatorChar)
-      val keepCP  = oldCP.filter(_.contains("/org.openjfx"))
+      val keepCP  = oldCP.filter(jar => classPathFilter.exists(jar.contains))
       val newCP   = keepCP ++ addCP
       val argsOut = argsIn.init.patch(idxCP, newCP.mkString(File.pathSeparator) :: Nil, 1) :+ mainClass
 

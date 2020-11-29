@@ -14,9 +14,8 @@ updates go through the launcher itself, so that releasing new Mellite artifacts 
 new Maven artifacts.
 
 The project is (C)opyright 2020 by Hanns Holger Rutz. All rights reserved.
-Since the launcher essentially establishes the classpath to Mellite, it is also 
-released under 
-the [GNU Affero General Public License](https://git.iem.at/sciss/Mellite-launcher/raw/main/LICENSE) v3+ 
+It is released under 
+the [GNU Lesser General Public License](https://git.iem.at/sciss/Mellite-launcher/raw/main/LICENSE) v2.1+ 
 and comes with absolutely no warranties. To contact the author, send an e-mail to `contact at sciss.de`.
 
 ## requirements / installation
