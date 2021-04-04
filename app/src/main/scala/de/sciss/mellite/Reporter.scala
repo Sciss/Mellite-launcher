@@ -13,6 +13,8 @@
 
 package de.sciss.mellite
 
+import scala.concurrent.Future
+
 trait Reporter {
   var status: String
 
@@ -22,4 +24,10 @@ trait Reporter {
 
   // thread-safe
   def dispose(): Unit
+
+  def showMessage(text: String, isError: Boolean): Future[Unit]
+
+  def showConfirm(text: String, isYesNo: Boolean): Future[Boolean]
+
+  def showOptions(text: String, items: Seq[String], default: Option[String]): Future[Option[String]]
 }

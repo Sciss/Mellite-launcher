@@ -13,8 +13,9 @@
 
 package de.sciss.mellite
 
-import java.awt.{Color, Font, Graphics, Graphics2D, RenderingHints}
-import javax.swing.JWindow
+import java.awt.{Color, EventQueue, Font, Graphics, Graphics2D, RenderingHints}
+import javax.swing.{JOptionPane, JWindow}
+import scala.concurrent.{Future, Promise}
 import scala.math.min
 
 class Splash extends JWindow with Reporter {
@@ -47,6 +48,43 @@ class Splash extends JWindow with Reporter {
       _progress = clip
       repaint()
     }
+  }
+
+  override def showMessage(text: String, isError: Boolean): Future[Unit] = {
+    val pr = Promise[Unit]()
+    EventQueue.invokeLater(() => {
+      val title = if (isError) "Error" else "Information"
+      val tpe   = if (isError) JOptionPane.ERROR_MESSAGE else JOptionPane.INFORMATION_MESSAGE
+      JOptionPane.showMessageDialog(null, text, title, tpe)
+      pr.success(())
+    })
+    pr.future
+  }
+
+  override def showConfirm(text: String, isYesNo: Boolean): Future[Boolean] = {
+    val pr = Promise[Boolean]()
+    EventQueue.invokeLater(() => {
+      val title   = "Choose"
+      val tpe     = if (isYesNo) JOptionPane.YES_NO_OPTION else JOptionPane.OK_CANCEL_OPTION
+      val code    = JOptionPane.showConfirmDialog(null, text, title, tpe, JOptionPane.QUESTION_MESSAGE)
+      val res     = if (isYesNo) code == JOptionPane.YES_OPTION else code == JOptionPane.OK_OPTION
+      pr.success(res)
+    })
+    pr.future
+  }
+
+  override def showOptions(text: String, items: Seq[String], default: Option[String]): Future[Option[String]] = {
+    val pr = Promise[Option[String]]()
+    EventQueue.invokeLater(() => {
+      val title   = "Choose"
+      val itemsA  = items.toArray[AnyRef]
+      val initVal = default.orNull
+      val code    = JOptionPane.showOptionDialog(null, text, title,
+        JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE, null, itemsA, initVal)
+      val res     = if (code < 0) None else Some(items(code))
+      pr.success(res)
+    })
+    pr.future
   }
 
   override def paint(g: Graphics): Unit = {

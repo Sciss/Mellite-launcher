@@ -13,6 +13,10 @@
 
 package de.sciss.mellite
 
+import scala.concurrent.{Future, blocking}
+import scala.util.Try
+import scala.concurrent.ExecutionContext.Implicits._
+
 class ConsoleReporter extends Thread("reporter") with Reporter {
   private var _status   = ""
   private var _version  = ""
@@ -57,6 +61,48 @@ class ConsoleReporter extends Thread("reporter") with Reporter {
     sync.synchronized {
       _disposed = true
       sync.notify()
+    }
+  }
+
+  override def showMessage(text: String, isError: Boolean): Future[Unit] = {
+    val s = if (isError) "ERROR" else "INFO"
+    printStatus(s"[$s] $text")
+    Future.unit
+  }
+
+  override def showConfirm(text: String, isYesNo: Boolean): Future[Boolean] = {
+    printStatus(s"[Confirm] $text")
+    Future {
+      var res = Option.empty[Boolean]
+      while ({
+        Console.out.print("Y/N> ")
+        Console.out.flush()
+        res = Try(blocking(Console.in.readLine())).toOption.flatMap { s =>
+          s.trim.toUpperCase() match {
+            case "Y"  => Some(true)
+            case "N"  => Some(true)
+            case _    => None
+          }
+        }
+        res.isEmpty
+      }) ()
+      res.get
+    }
+  }
+
+  override def showOptions(text: String, items: Seq[String], default: Option[String]): Future[Option[String]] = {
+    printStatus(s"[Query] $text")
+    val itemsI = items.map(s => if (default.contains(s)) s"* $s" else s"  $s")
+    println(itemsI.mkString("\n"))
+    Future {
+      var res = Option.empty[String]
+      while ({
+        Console.out.print("> ")
+        Console.out.flush()
+        res = Try(blocking(Console.in.readLine())).toOption
+        res.isEmpty || res.exists(items.contains)
+      }) ()
+      res
     }
   }
 }

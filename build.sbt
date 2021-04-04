@@ -18,6 +18,7 @@ lazy val deps = new {
     val appDirs   = "1.2.1"
     val coursier  = "2.0.16"
 //    val scallop   = "4.0.2"
+    val scalaOSC  = "1.3.0"
     val slf4j     = "1.7.30"
   }
 }
@@ -72,6 +73,7 @@ lazy val app = project.in(file("app"))
   .settings(
     name          := s"$baseName-app",  // must be different from baseName, otherwise root project overwrites jar
     libraryDependencies ++= Seq(
+      "de.sciss"        %% "scalaosc"     % deps.main.scalaOSC,   // open sound control
       "io.get-coursier" %% "coursier"     % deps.main.coursier,   // retrieving dependencies
       "net.harawata"    %  "appdirs"      % deps.main.appDirs,    // finding cache directory
 //      "org.rogach"      %% "scallop"      % deps.main.scallop,    // command line option parsing
