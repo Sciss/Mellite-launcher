@@ -2,9 +2,9 @@
  *  Launcher.scala
  *  (Mellite-launcher)
  *
- *  Copyright (c) 2020 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2020-2021 Hanns Holger Rutz. All rights reserved.
  *
- *  This software is published under the GNU Lesser General Public License v2.1+
+ *  This software is published under the GNU Affero General Public License v3+
  *
  *
  *  For further information, please contact Hanns Holger Rutz at
@@ -22,6 +22,7 @@ import java.awt.EventQueue
 import java.io.File
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits._
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 
 object Launcher {
@@ -31,10 +32,15 @@ object Launcher {
   final val mainClass       = "de.sciss.mellite.Mellite"
   final val classPathFilter = "/org.openjfx" :: Nil
 
-  final val DEBUG = false
+  final case class Config(headless: Boolean, verbose: Boolean, offline: Boolean)
 
   def main(args: Array[String]): Unit = {
-//    val parent    = getClass.getClassLoader
+    val headless  = args.exists(p => p == "--headless" || p == "-h")
+    val verbose   = args.exists(p => p == "--verbose"  || p == "-V")
+    val offline   = args.contains("--offline")
+    val cfg       = Config(headless = headless, verbose = verbose, offline = offline)
+
+    //    val parent    = getClass.getClassLoader
 //    val cl        = new URLClassLoader(new Array(0), parent)
 //    val clLaunch  = Class.forName("de.sciss.mellite.Launcher", true, cl)
 //    val cons      = clLaunch.getConstructor(classOf[ClassLoader])
@@ -45,18 +51,25 @@ object Launcher {
 //    println(s"COMMAND LINE: ${pi.commandLine()}")
 //    println(s"ARGS: ${pi.arguments()}")
 //    println(pi)
-    EventQueue.invokeLater { () =>
-      val splash = new Splash
-      run(splash)
+
+    if (headless) {
+      val splash = new ConsoleReporter
+      run(cfg, splash)
+    } else {
+      EventQueue.invokeLater { () =>
+        val splash = new Splash
+        run(cfg, splash)
+      }
     }
   }
 
-  private def run(splash: Splash): Unit = {
-    import splash.status
+  private def run(cfg: Config, r: Reporter): Unit = {
+    import cfg._
+    import r.status
     val appDirs   = AppDirsFactory.getInstance
     val cacheBase = appDirs.getUserCacheDir ("mellite", /* version */ null, /* author */ "de.sciss")
     val dataBase  = appDirs.getUserDataDir  ("mellite", /* version */ null, /* author */ "de.sciss")
-    if (DEBUG) {
+    if (verbose) {
       println(s"Cache path: $cacheBase")
       println(s"Data path : $dataBase" )
     }
@@ -71,53 +84,48 @@ object Launcher {
     //      .withLogger(RefreshLogger.create(System.out))
     //      .withPool(pool)
 
-//    val appDep  = dep"$groupId:$artifactId:latest.release"
-    val appMod  = Module(Organization(groupId), ModuleName(artifactId))
-//    val appDep  = Dependency(appMod, "latest.release")
-    val versions = Versions(cacheResolve).withModule(appMod)
-//    val resolve = Resolve(cacheResolve)
-//      .addDependencies(appDep)
-//    val futRes = resolve.future()
-    val futVer = versions.result().future()
+    val appMod    = Module(Organization(groupId), ModuleName(artifactId))
+    val repos     = if (cfg.offline) {
+//      val centralURI = new URI(Repositories.central.root)
+//      val centralF   = new File(new URI("file", null, centralURI.getPath))
+      // XXX TODO: is there a proper way to construct the cache directory for a given repository?
+      val centralF    = new File(new File(new File(cacheDir, "https"), "repo1.maven.org"), "maven2")
+      val centralURI  = centralF.toURI.toString
+//      println(centralURI)
+//      assert (centralF.isDirectory, centralF.toString)
+      val centralCache = MavenRepository(centralURI)
+      LocalRepositories.ivy2Local :: centralCache :: Nil
+    } else {
+      Resolve.defaultRepositories
+    }
+    val versions  = Versions(cacheResolve).withModule(appMod).withRepositories(repos)
+    val futVer: Future[Versions.Result] = versions.result().future()
 
-//    val exit = new AnyRef
-
-//    new Thread {
-//      override def run(): Unit =
-//        exit.synchronized(exit.wait())
-//
-//      start()
+//    futVer.foreach { r =>
+//      println(s"RES: $r")
 //    }
 
-    val futLatest = futVer.map { req =>
-      val vs = req.versions
-//      status = "Resolved."
-//        println(resolve)
-//      if (DEBUG) {
-//        println("------ Conflicts ------")
-//        resolution.conflicts.foreach(println)
-//        println("------ Dependencies ------")
-//        resolution.orderedDependencies.foreach(println)
-//        println("------ Root Dependencies ------")
-//        resolution.rootDependencies.foreach(println)
-//        println("------ Missing from Cache ------")
-//        resolution.missingFromCache
-//      }
-
-      if (DEBUG) {
+    val futLatest: Future[String] = futVer.map { req =>
+      val vs  = req.versions
+      if (verbose) {
         println("------ Available Versions ------")
-        vs.available.foreach(println)
+        val av = vs.available
+        av.foreach(println)
+        if (av.nonEmpty) println(s"Latest: ${vs.latest}")
       }
-
       vs.latest
     }
 
-    val futFetch = futLatest.flatMap { v =>
-      splash.version = s"version $v"
+//    futLatest.foreach { s =>
+//      println(s"LATEST: $s")
+//    }
+
+    val futFetch: Future[Fetch.Result] = futLatest.flatMap { v =>
+      r.version = s"version $v"
       status = "Resolving dependencies..."
       val appDep    = Dependency(appMod, v)
       val resolve   = Resolve(cacheResolve)
-        .addDependencies(appDep)
+        .addDependencies(appDep).withRepositories(repos)
       val cacheArt  = cache.FileCache[Task](artDir)
       resolve.future().flatMap { resolution =>
         status = "Fetching libraries..."
@@ -130,7 +138,7 @@ object Launcher {
           private def add(url: String): Unit = if (remain.remove(url)) {
             val done = size - remain.size
             val p = done.toFloat / size
-            splash.progress = p
+            r.progress = p
           }
 
           override def foundLocally       (url: String)                   : Unit = add(url)
@@ -142,9 +150,9 @@ object Launcher {
       }
     }
 
-    val futFiles = futFetch.map { fetched =>
+    val futFiles: Future[Seq[File]] = futFetch.map { fetched =>
       status = "Fetched libraries."
-      if (DEBUG) {
+      if (verbose) {
         println("------ Artifacts ------")
         fetched.detailedArtifacts.foreach { case (dep, pub, art, f) =>
           println(s"DEP $dep | PUB $pub | ART $art | FILE $f")
@@ -157,14 +165,14 @@ object Launcher {
       fetched.files
     }
 
-    val futInst = futFiles.map { files =>
+    val futInst: Future[Process] = futFiles.map { files =>
       val addCP   = files.iterator.map(_.getPath)
       val ph      = ProcessHandle.current()
       val pi      = ph.info()
       val cmd     = pi.command().get()
       val argsIn  = pi.arguments().get()
 
-      if (DEBUG)
+      if (verbose)
       {
         println(s"CMD      = '$cmd''")
         println(s"ARGS IN  = ${argsIn.mkString("'", "', '", "'")}")
@@ -179,9 +187,16 @@ object Launcher {
       val oldCP   = argsIn(idxCP).split(File.pathSeparatorChar)
       val keepCP  = oldCP.filter(jar => classPathFilter.exists(jar.contains))
       val newCP   = keepCP ++ addCP
-      val argsOut = argsIn.init.patch(idxCP, newCP.mkString(File.pathSeparator) :: Nil, 1) :+ mainClass
+      val clzSelf = {
+        val s = Launcher.getClass.getName
+        s.substring(0, s.length - 1)
+      }
+//      println(clzSelf)
+      val idxSelf = argsIn.indexOf(clzSelf)
+      assert (idxSelf > idxCP)
+      val argsOut = argsIn.take(idxSelf).patch(idxCP, newCP.mkString(File.pathSeparator) :: Nil, 1) :+ mainClass
 
-      if (DEBUG)
+      if (verbose)
       {
         println(s"ARGS OUT = ${argsOut.mkString("'", "', '", "'")}")
       }
@@ -192,7 +207,7 @@ object Launcher {
       p
     }
 
-    val futErr = futInst.recover {
+    val futErr: Future[Process] = futInst.recover {
       case ex =>
         status = "Failed!"
         ex.printStackTrace()
@@ -201,9 +216,10 @@ object Launcher {
 
     futErr.foreach { p =>
       val alive = new Thread(() => {
-        EventQueue.invokeLater(() => splash.dispose())
+        r.dispose()
+        // EventQueue.invokeLater(() => r.dispose())
         val code = p.waitFor()  // join child process
-        if (DEBUG) {
+        if (verbose) {
           println(s"EXIT CODE $code")
         }
         sys.exit(code)

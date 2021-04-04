@@ -13,14 +13,14 @@ artifacts over and over again. Instead, one should be able to install the launch
 updates go through the launcher itself, so that releasing new Mellite artifacts boils down to publishing
 new Maven artifacts.
 
-The project is (C)opyright 2020 by Hanns Holger Rutz. All rights reserved.
+The project is (C)opyright 2020–2021 by Hanns Holger Rutz. All rights reserved.
 It is released under 
-the [GNU Lesser General Public License](https://git.iem.at/sciss/Mellite-launcher/raw/main/LICENSE) v2.1+ 
+the [GNU Affero General Public License](https://git.iem.at/sciss/Mellite-launcher/raw/main/LICENSE) v3+ 
 and comes with absolutely no warranties. To contact the author, send an e-mail to `contact at sciss.de`.
 
 ## requirements / installation
 
-This project builds with sbt against Scala 2.13 (JVM).
+This project builds with sbt against Scala 2.13 (JVM). It needs Java 9 or newer to compile and run.
 
 ## notes
 

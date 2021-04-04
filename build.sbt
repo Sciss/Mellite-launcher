@@ -15,28 +15,29 @@ def appVersion  = projectVersion
 
 lazy val deps = new {
   val main = new {
-    val appDirs   = "1.2.0"
-    val coursier  = "2.0.7"
+    val appDirs   = "1.2.1"
+    val coursier  = "2.0.16"
+//    val scallop   = "4.0.2"
     val slf4j     = "1.7.30"
   }
 }
 
 lazy val commonSettings = Seq(
   version       := projectVersion,
-  scalaVersion  := "2.13.4",
+  scalaVersion  := "2.13.5",
   organization  := "de.sciss",
   homepage      := Some(url(s"https://git.iem.at/$baseName")),
   description   := "Application launcher and updater for Mellite",
-  licenses      := Seq("LGPL v2.1+" -> url("http://www.gnu.org/licenses/lgpl-2.1.txt")),
+  licenses      := Seq("AGPL v3+" -> url("http://www.gnu.org/licenses/agpl-3.0.txt")),
   scalacOptions ++= Seq(
     "-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xlint:-stars-align,_", "-Xsource:2.13"
   ),
   scalacOptions /* in (Compile, compile) */ ++= {
-    val sq0 = if (scala.util.Properties.isJavaAtLeast("9")) Seq("-release", "8") else Nil // JDK >8 breaks API; skip scala-doc
-    val sq1 = if (VersionNumber(scalaVersion.value).matchesSemVer(SemanticSelector(">=2.13"))) Seq("-Wconf:cat=deprecation&msg=Widening conversion:s") else Nil // nanny state defaults :-E
+    val sq0 = if (scala.util.Properties.isJavaAtLeast("9")) List("-release", "9") else Nil // we use java.lang.ProcessHandle
+    val sq1 = if (VersionNumber(scalaVersion.value).matchesSemVer(SemanticSelector(">=2.13"))) "-Wconf:cat=deprecation&msg=Widening conversion:s" :: sq0 else sq0 // nanny state defaults :-E
     sq1
   },
-  javacOptions ++= Seq("-source", "1.8", "-target", "1.8"),
+  javacOptions ++= Seq("-source", "1.9", "-target", "1.9"),
   updateOptions := updateOptions.value.withLatestSnapshots(false),
 //  aggregate in assembly := false,
 )
@@ -73,6 +74,7 @@ lazy val app = project.in(file("app"))
     libraryDependencies ++= Seq(
       "io.get-coursier" %% "coursier"     % deps.main.coursier,   // retrieving dependencies
       "net.harawata"    %  "appdirs"      % deps.main.appDirs,    // finding cache directory
+//      "org.rogach"      %% "scallop"      % deps.main.scallop,    // command line option parsing
       "org.slf4j"       %  "slf4j-api"    % deps.main.slf4j,      // logging (used by coursier)
       "org.slf4j"       %  "slf4j-simple" % deps.main.slf4j,      // logging (used by coursier)
     ),

@@ -2,9 +2,9 @@
  *  Splash.scala
  *  (Mellite-launcher)
  *
- *  Copyright (c) 2020 Hanns Holger Rutz. All rights reserved.
+ *  Copyright (c) 2020-2021 Hanns Holger Rutz. All rights reserved.
  *
- *  This software is published under the GNU Lesser General Public License v2.1+
+ *  This software is published under the GNU Affero General Public License v3+
  *
  *
  *  For further information, please contact Hanns Holger Rutz at
@@ -17,7 +17,7 @@ import java.awt.{Color, Font, Graphics, Graphics2D, RenderingHints}
 import javax.swing.JWindow
 import scala.math.min
 
-class Splash extends JWindow {
+class Splash extends JWindow with Reporter {
   private var _status   = ""
   private var _version  = ""
   private var _progress = -1.0f
@@ -28,20 +28,20 @@ class Splash extends JWindow {
   setLocationRelativeTo(null)
   setVisible(true)
 
-  def status: String = _status
-  def status_=(value: String): Unit = if (_status != value) {
+  override def status: String = _status
+  override def status_=(value: String): Unit = if (_status != value) {
     _status = value
     repaint()
   }
 
-  def version: String = _version
-  def version_=(value: String): Unit = if (_version != value) {
+  override def version: String = _version
+  override def version_=(value: String): Unit = if (_version != value) {
     _version = value
     repaint()
   }
 
-  def progress: Float = _progress
-  def progress_=(value: Float): Unit = {
+  override def progress: Float = _progress
+  override def progress_=(value: Float): Unit = {
     val clip = min(value, 1f)
     if (_progress != clip) {
       _progress = clip
