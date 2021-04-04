@@ -81,6 +81,7 @@ object Launcher {
     status = "Checking version..."
     val cacheResolve = cache.FileCache[Task](cacheDir)
       .withTtl(1.hour)
+//      .withTtl(1.second)
     //      .withLogger(RefreshLogger.create(System.out))
     //      .withPool(pool)
 
