@@ -17,11 +17,12 @@ import coursier._
 import coursier.cache.{CacheLogger, FileCache}
 import coursier.core.Version
 import coursier.util.Task
+import de.sciss.osc
 import net.harawata.appdirs.AppDirsFactory
 
 import java.awt.EventQueue
 import java.io.{File, FileInputStream, FileOutputStream}
-import java.util.{Properties => JProperties}
+import java.util.{Date, Properties => JProperties}
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
@@ -49,7 +50,7 @@ object Launcher {
   final val classPathFilter = "/org.openjfx" :: Nil
 
   /** Minimum Mellite version that understands the launcher port argument */
-  final val Min_Mellite_LauncherArg = "3.5.0"
+  final val Min_Mellite_LauncherArg = "3.4.99"
 
   final case class Config(headless: Boolean, verbose: Boolean, offline: Boolean, checkNow: Boolean,
                           selectVersion: Boolean,
@@ -141,6 +142,17 @@ object Launcher {
     def isInstalled: Boolean = lastUpdateTime > Long.MinValue
 
     def write()(implicit cfg: Config): Unit = Installation.write(this)
+
+    override def toString: String = {
+      s"""$productPrefix(
+         |  currentVersion = $currentVersion",
+         |  lastUpdateTime = ${new Date(lastUpdateTime)}
+         |  nextUpdateTime = ${new Date(nextUpdateTime)}
+         |  #jars = ${jars.size},
+         |  #oldJars = ${oldJars.size}
+         |)
+         |""".stripMargin
+    }
   }
 
   private val Switch_Verbose      = "--verbose"
@@ -221,6 +233,20 @@ object Launcher {
   //      } else {
     Resolve.defaultRepositories
     //      }
+  }
+
+  private var restartAction: () => Unit = () => ()
+
+  private def obtainVersion(inst0: Installation, select: Boolean)
+                           (implicit r: Reporter, cfg: Config, cacheResolve: FileCache[Task]): Future[Option[String]] = {
+    val futVersions: Future[core.Versions] = obtainVersions()
+    if (!select) {
+      futVersions.map(vs => if (vs.available.isEmpty) None else Some(vs.latest))
+    } else {
+      futVersions.flatMap { vs =>
+        dialogSelectVersion(inst0, vs)
+      }
+    }
   }
 
   private def obtainVersions()
@@ -331,6 +357,63 @@ object Launcher {
     else r.showMessage("Could not find any online version!", isError = true)
   }
 
+  private def dialogCompareVersion(inst0: Installation, latest: String, explicit: Boolean)
+                                  (implicit r: Reporter, cfg: Config, cacheResolve: FileCache[Task]): Future[Installation] = {
+    if (Version(inst0.currentVersion) >= Version(latest)) {
+      val info = if (explicit) messageNoNewVersion(inst0) else Future.unit
+      info.map(_ => inst0)
+    }
+    else dialogNewerVersion(inst0, latest)
+  }
+
+  private lazy val oscClient = {
+    val c = osc.UDP.Config()
+    c.localIsLoopback = true
+    val t = osc.UDP.Transmitter(c)
+    t.connect()
+    val r = osc.UDP.Receiver(t.channel, c)
+    r.connect()
+    (t, r)
+  }
+
+  private def setupOSC(inst0: Installation)(implicit cfg: Config, cacheResolve: FileCache[Task]): Int = {
+    val (t, r) = oscClient
+    if (cfg.verbose) {
+      t.dump()
+      r.dump()
+    }
+    r.action = {
+      case (osc.Message("/check-update", flags: Int, _ @ _*), addr) =>
+        implicit val r: Reporter = new Splash
+        val select = (flags & 0x01) != 0
+        val futVersion: Future[Option[String]] = obtainVersion(inst0, select = select)
+        val futInstall: Future[Installation] = futVersion.flatMap {
+          case Some(v)  => dialogCompareVersion(inst0, latest = v, explicit = true)
+          case None     => Future.successful(inst0)
+        }
+        futInstall.onComplete {
+          case Success(inst1) =>
+            if (inst0 != inst1) {
+              restartAction = { () =>
+                runProcess(inst0, Future.successful(inst1))
+              }
+              t.send(osc.Message("/reboot"), addr)
+            } else {
+              r.dispose()
+            }
+
+          case Failure(ex) =>
+            val futM = r.showMessage(s"Could not update: ${ex.getMessage}", isError = true)
+            futM.andThen { case _ => r.dispose() }
+            ex.printStackTrace()
+        }
+
+      case (other, _) =>
+        Console.err.println(s"Unsupported OSC message: $other")
+    }
+    t.localPort
+  }
+
   private def run(inst0: Installation)(implicit r: Reporter, cfg: Config): Unit = {
     import cfg._
     import r.status
@@ -342,11 +425,12 @@ object Launcher {
     implicit lazy val cacheResolve: FileCache[Task] = FileCache[Task](cacheDir)
       .withTtl(1.hour)  // XXX TODO which value here
 
-    val shouldCheck = !inst0.isInstalled || cfg.checkNow || cfg.selectVersion || now >= inst0.nextUpdateTime
+    val autoCheck   = now >= inst0.nextUpdateTime
+    val shouldCheck = !inst0.isInstalled || cfg.checkNow || cfg.selectVersion || autoCheck
 
     def stickToOld: Future[Installation] =
       if (inst0.isInstalled) {
-        val inst1 = inst0.copy(nextUpdateTime = now + 604800000L)
+        val inst1 = if (!autoCheck) inst0 else inst0.copy(nextUpdateTime = now + 604800000L)
         Future.successful(inst1)
       }
       else Future.failed(new Exception(s"No version installed. Re-run with network enabled!"))
@@ -354,23 +438,12 @@ object Launcher {
     val futInst: Future[Installation] = if (!offline && shouldCheck) {
       status = "Checking version..."
 
-      val futVersions: Future[core.Versions] = obtainVersions()
-      val futVersion: Future[Option[String]] = if (!cfg.selectVersion) {
-        futVersions.map(vs => if (vs.available.isEmpty) None else Some(vs.latest))
-      } else {
-        futVersions.flatMap { vs =>
-          dialogSelectVersion(inst0, vs)
-        }
-      }
+      val futVersion: Future[Option[String]] = obtainVersion(inst0, select = cfg.selectVersion)
 
       futVersion.transformWith {
         case Success(Some(v)) =>
           if (!inst0.isInstalled || cfg.selectVersion) install(inst0, version = v)
-          else if (Version(inst0.currentVersion) >= Version(v)) {
-            val info = if (cfg.checkNow) messageNoNewVersion(inst0) else Future.unit
-            info.map(_ => inst0)
-          }
-          else dialogNewerVersion(inst0, v)
+          else dialogCompareVersion(inst0, latest = v, explicit = cfg.checkNow)
 
         case Success(None) => stickToOld
 
@@ -383,6 +456,12 @@ object Launcher {
       stickToOld
     }
 
+    runProcess(inst0, futInst)
+  }
+
+  private def runProcess(inst0: Installation, futInst: Future[Installation])
+                        (implicit r: Reporter, cfg: Config,
+                         cacheResolve: FileCache[Task]): Future[(Installation, Process)] = {
     val futProcess: Future[(Installation, Process)] = futInst.map { inst1 =>
       val addCP   = inst1.jars.iterator.map(_.getPath)
       val ph      = ProcessHandle.current()
@@ -390,7 +469,7 @@ object Launcher {
       val cmd     = pi.command().get()
       val argsIn  = pi.arguments().get().toSeq
 
-      if (verbose) {
+      if (cfg.verbose) {
         println(s"CMD      = '$cmd''")
         println(s"ARGS IN  = ${argsIn.mkString("'", "', '", "'")}")
       }
@@ -398,7 +477,7 @@ object Launcher {
       val idxCP   = {
         var i         = argsIn.indexOf("-classpath")
         if (i < 0) i  = argsIn.indexOf("-cp")
-          require (i >= 0)
+        require (i >= 0)
         i + 1
       }
       val oldCP   = argsIn(idxCP).split(File.pathSeparatorChar)
@@ -408,13 +487,17 @@ object Launcher {
         val s = Launcher.getClass.getName
         s.substring(0, s.length - 1)
       }
-//      println(clzSelf)
+      //      println(clzSelf)
       val idxSelf = argsIn.indexOf(clzSelf)
       assert (idxSelf > idxCP)
+      val argsOSC = if (Version(inst1.currentVersion) < Version(Min_Mellite_LauncherArg)) Nil else {
+        val port = setupOSC(inst1)
+        List("--launcher", port.toString)
+      }
       val argsOut: Seq[String] = argsIn.take(idxSelf).patch(idxCP, newCP.mkString(File.pathSeparator) :: Nil, 1) ++
-        (mainClass +: cfg.appArgs)
+        (mainClass +: (cfg.appArgs ++ argsOSC))
 
-      if (verbose) {
+      if (cfg.verbose) {
         println(s"ARGS OUT = ${argsOut.mkString("'", "', '", "'")}")
       }
 
@@ -432,13 +515,16 @@ object Launcher {
           val newDirs = inst1.jars   .flatMap(f => Option(f.getParentFile)).toSet
           val delDirs = oldDirs -- newDirs
           delDirs.foreach { d =>
-            if (verbose) println(s"DELETE $d")
+            if (cfg.verbose) println(s"DELETE $d")
             deleteDirectory(d)
           }
           inst1.copy(oldJars = Nil)
         }
-        if (verbose) {
+        if (cfg.verbose) {
+          // println("-- old")
+          // println(inst0)
           println("WRITE PROPERTIES")
+          println(inst1)
         }
         inst2.write()
         inst2
@@ -450,18 +536,20 @@ object Launcher {
     futProcess.onComplete {
       case Failure(ex) =>
         val m = ex.getMessage
-        status = if (m == null) "Failed!" else s"Error: $m"
+        r.status = if (m == null) "Failed!" else s"Error: $m"
         ex.printStackTrace()
 
       case Success((_ /*instOut*/, p)) =>
         val alive = new Thread(() => {
-//          Thread.sleep(2000)
+          //          Thread.sleep(2000)
           r.dispose()
-          waitFor(p, verbose = verbose)
+          waitFor(p, verbose = cfg.verbose)
         })
         alive.setDaemon(false)
         alive.start()
     }
+
+    futProcess
   }
 
   private def waitFor(p: Process, verbose: Boolean)(implicit cfg: Config): Unit = {
@@ -470,7 +558,7 @@ object Launcher {
       println(s"EXIT CODE $code")
     }
     if (code == 82 /* 'R' */) {
-      ??? // runWith()
+      restartAction()
     } else {
       sys.exit(code)
     }

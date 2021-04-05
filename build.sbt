@@ -18,7 +18,7 @@ lazy val deps = new {
     val appDirs   = "1.2.1"
     val coursier  = "2.0.16"
 //    val scallop   = "4.0.2"
-    val scalaOSC  = "1.3.0"
+    val scalaOSC  = "1.3.1"
     val slf4j     = "1.7.30"
   }
 }
