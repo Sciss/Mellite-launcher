@@ -15,8 +15,9 @@ package de.sciss.mellite
 
 import coursier._
 import coursier.cache.{CacheLogger, FileCache}
-import coursier.core.Version
-import coursier.util.Task
+import coursier.core.Repository.ArtifactExtensions
+import coursier.core.{Extension, Publication, Version}
+import coursier.util.{Artifact, Task}
 import de.sciss.osc
 import net.harawata.appdirs.AppDirsFactory
 
@@ -28,8 +29,8 @@ import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
+import scala.util.{Failure, Success, Try}
 
 object Launcher {
   def name    : String = buildInfString("name" )
@@ -365,6 +366,79 @@ object Launcher {
 //    if (failed.isEmpty) Nil else failed.reverse
   }
 
+  private def obtainChangeNotes(version: String)(implicit r: Reporter, cfg: Config,
+                                                 cacheResolve: FileCache[Task]): Future[Seq[String]] = {
+    val appDep      = Dependency(appMod, version)
+    val appDepPOM   = appDep.withTransitive(false)
+    val resolvePOM  = Resolve(cacheResolve).addDependencies(appDepPOM).withRepositories(repos)
+
+    val changeNotes: Future[Seq[String] /*xml.Elem*/] = resolvePOM.future().flatMap { resolution =>
+//      println("---- RESOLVED ARTIFACTS ----")
+//      resolution.artifacts().foreach { a =>
+//        println(s"url = ${a.url}") // ; extra = ${a.extra}")
+//      }
+//      println("----")
+      val artifacts = Artifacts(cacheResolve).withResolution(resolution).addTransformArtifacts { sq =>
+        sq.map { case (dep, _ /*pub*/, artIn) =>
+          // cf. MavenRepository - metadataArtifact
+          // XXX TODO super hackish way to determine the POM URL.
+          // there must be an official way in Coursier to do this.
+          val pomPub      = Publication(dep.module.name.value, Type.pom, Extension.pom, Classifier.empty)
+          val urlIn       = artIn.url
+          val isMaven     = urlIn.startsWith(Repositories.central.root)
+          val isIvy       = urlIn.startsWith("file:")  // huh
+          assert (urlIn.endsWith(".jar"), urlIn)
+          val pomURL: String = if (isMaven) {
+            s"${urlIn.substring(0, urlIn.length - 4)}.${pomPub.ext.value}"
+          } else if (isIvy) {
+            val j = urlIn.lastIndexOf("/") + 1
+            val i = urlIn.lastIndexOf("/", j - 2)
+            assert (urlIn.substring(i, j) == "/jars/", s"url = '$urlIn', i = $i, j = $j")
+            val n = urlIn.substring(j)
+            s"${urlIn.substring(0, i)}/poms/${n.substring(0, n.length - 4)}.${pomPub.ext.value}"
+
+          } else {
+            throw new IllegalArgumentException(artIn.url)
+          }
+
+          if (cfg.verbose) {
+            println(s"POM URL for change notes: $pomURL")
+          }
+
+          val metadataArtifact  =
+            Artifact(
+              pomURL,
+              Map.empty,
+              Map.empty,
+              changing = artIn.changing, // XXX TODO what is this?,
+              optional = true,
+              authentication = artIn.authentication
+            ).withDefaultChecksums.withDefaultSignature
+
+          (dep, pomPub, metadataArtifact)
+        }
+      }
+      val fetch = new Fetch(resolvePOM, artifacts, None)
+      fetch.futureResult().map { res =>
+//        println("---- FETCHED ARTIFACTS ----")
+//        res.artifacts.foreach { case (_, f) =>
+//          println(f)
+//        }
+//        println("----")
+        val pomF = res.artifacts.head._2
+        val fi = new FileInputStream(pomF)
+        try {
+          val root = scala.xml.XML.load(fi)
+          (root \ "properties" \\ "mllt.change").toList.map(_.text.trim)
+        } finally {
+          fi.close()
+        }
+      }
+    }
+
+    changeNotes
+  }
+
   private def install(inst0: Installation, version: String)
                      (implicit r: Reporter, cfg: Config, cacheResolve: FileCache[Task]): Future[Installation] = {
     val futFetch: Future[Fetch.Result] = {
@@ -374,6 +448,18 @@ object Launcher {
       val resolve   = Resolve(cacheResolve)
         .addDependencies(appDep).withRepositories(repos)
       val cacheArt  = cache.FileCache[Task](cfg.artDir)
+
+      val changeNotes = obtainChangeNotes(version)
+      changeNotes.onComplete {
+        case Success(text) =>
+          println("---- Changes ----")
+          println(text.mkString(" - ", "\n - ", ""))
+
+        case Failure(ex) =>
+          println("POM failed load:")
+          ex.printStackTrace()
+      }
+
       resolve.future().flatMap { resolution =>
         r.status = "Fetching libraries..."
         //        status = "Resolving artifacts..."
