@@ -1,4 +1,3 @@
-import com.typesafe.sbt.license.{DepLicense, DepModuleInfo, LicenseInfo}
 import com.typesafe.sbt.packager.linux.LinuxPackageMapping
 
 lazy val baseName           = "Mellite-launcher"
