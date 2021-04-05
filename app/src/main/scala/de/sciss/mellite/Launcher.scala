@@ -59,7 +59,7 @@ object Launcher {
   private final val Mellite_API1    = "3.4.99"
 
   final case class Config(headless: Boolean, verbose: Boolean, offline: Boolean, checkNow: Boolean,
-                          selectVersion: Boolean, /*oscServer: Boolean,*/
+                          selectVersion: Boolean, /*oscServer: Boolean,*/ appHelp: Boolean,
                           cacheBase: File, dataBase: File, configBase: File,
                           prefix: String, appArgs: List[String]) {
     if (verbose) {
@@ -178,6 +178,7 @@ object Launcher {
   private val Switch_Help         = "--help"
   private val Switch_List         = "--list"
   private val Switch_Remove       = "--remove"
+  private val Switch_AppHelp      = "--app-help"
 
   private val Switch_Headless     = "--headless"
   private val Switch_HeadlessS    = "-h"
@@ -197,7 +198,8 @@ object Launcher {
         |  $Switch_Prefix $nameArg  installation prefix (default: '$DefaultPrefix'). Allows to install multiple versions.
         |  $Switch_List           list installed prefixes and quit.
         |  $Switch_Remove         remove the installation data for given prefix, and quit.
-        |  $Switch_Help           print this information. Use twice to get Mellite application help.
+        |  $Switch_AppHelp       pass `$Switch_Help` to the Mellite application.
+        |  $Switch_Help           print this information. Use `$Switch_AppHelp` for Mellite application help.
         |
         |Any other arguments are passed on to the Mellite application.
         |""".stripMargin
@@ -216,7 +218,8 @@ object Launcher {
     var removePrefix= false
 //    var oscServer   = true
     var prefix      = DefaultPrefix
-    var helpCount   = 0
+    var help        = false
+    var appHelp     = false
 
     val appArgsB    = List.newBuilder[String]
 
@@ -231,9 +234,8 @@ object Launcher {
         case Switch_Prefix                      => ai += 1; prefix = args(ai)
         case Switch_List                        => listPrefixes = true
         case Switch_Remove                      => removePrefix = true
-        case Switch_Help =>
-          helpCount += 1
-          if (helpCount == 2) appArgsB += Switch_Help
+        case Switch_Help                        => help         = true
+        case Switch_AppHelp                     => appHelp      = true
 
         case arg =>
           // allow anything else to proliferate to Mellite app
@@ -242,11 +244,9 @@ object Launcher {
       ai += 1
     }
 
-    if (helpCount > 0) {
+    if (help) {
       printHelp()
-      if (helpCount == 1) {
-        sys.exit(1)
-      }
+      sys.exit(1)
     }
 
     val appDirs     = AppDirsFactory.getInstance
@@ -278,7 +278,7 @@ object Launcher {
 
     val appArgs     = appArgsB.result()
     implicit val cfg: Config = Config(headless = headless, verbose = verbose, offline = offline, checkNow = checkNow,
-      selectVersion = selVersion, /*oscServer = oscServer,*/
+      selectVersion = selVersion, appHelp = appHelp,
       cacheBase = cacheBaseF, dataBase = dataBaseF, configBase = configBaseF,
       prefix = prefix, appArgs = appArgs)
     val inst0     = Installation.read()
@@ -579,13 +579,14 @@ object Launcher {
       }
       val idxSelf = argsIn.indexOf(clzSelf)
       assert (idxSelf > idxCP)
-      val hasAPI1   = Version(inst1.currentVersion) >= Version(Mellite_API1)
+      val hasAPI1   = !cfg.appHelp && Version(inst1.currentVersion) >= Version(Mellite_API1)
       val _hasOSC   = /*cfg.oscServer &&*/ !cfg.offline && hasAPI1
       val appArgs0  = cfg.appArgs
-      val appArgs1  = if (!hasAPI1 || cfg.prefix == DefaultPrefix) appArgs0 else "--prefix" :: cfg.prefix :: appArgs0
-      val appArgs   = if (!_hasOSC) appArgs1 else {
+      val appArgs1  = if (!cfg.appHelp) appArgs0 else "--help" :: appArgs0
+      val appArgs2  = if (!hasAPI1 || cfg.prefix == DefaultPrefix) appArgs1 else "--prefix" :: cfg.prefix :: appArgs1
+      val appArgs   = if (!_hasOSC) appArgs2 else {
         val port = setupOSC(inst1)
-        "--launcher" :: port.toString :: appArgs1
+        "--launcher" :: port.toString :: appArgs2
       }
       val argsOut: List[String] = argsIn.take(idxSelf).patch(idxCP, newCP.mkString(File.pathSeparator) :: Nil, 1) :::
         (mainClass :: appArgs)

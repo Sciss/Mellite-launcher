@@ -39,7 +39,8 @@ The following command line options are available:
 |`--prefix <name>` |installation prefix (default: 'coursier'). Allows to install multiple versions.|
 |`--list`          |list installed prefixes and quit.|
 |`--remove`        |remove the installation data for given prefix, and quit.|
-|`--help`          |print this information. Use twice to get Mellite application help.|
+|`--app-help`      |pass `--help` to the Mellite application.
+|`--help`          |print this information. Use `--app-help` for Mellite application help.
 
 Thus, once a full Mellite application version is installed, you can
 use `--offline` to completely skip automatic update checks. The update
