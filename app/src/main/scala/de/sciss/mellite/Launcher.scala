@@ -177,6 +177,7 @@ object Launcher {
   private val Switch_Prefix       = "--prefix"
   private val Switch_Help         = "--help"
   private val Switch_List         = "--list"
+  private val Switch_Remove       = "--remove"
 
   private val Switch_Headless     = "--headless"
   private val Switch_HeadlessS    = "-h"
@@ -195,6 +196,7 @@ object Launcher {
         |  $Switch_Headless, $Switch_HeadlessS   headless mode (no GUI windows). Passed on to the application.
         |  $Switch_Prefix $nameArg  installation prefix (default: '$DefaultPrefix'). Allows to install multiple versions.
         |  $Switch_List           list installed prefixes and quit.
+        |  $Switch_Remove         remove the installation data for given prefix, and quit.
         |  $Switch_Help           print this information. Use twice to get Mellite application help.
         |
         |Any other arguments are passed on to the Mellite application.
@@ -211,6 +213,7 @@ object Launcher {
     var offline     = false
     var selVersion  = false
     var listPrefixes= false
+    var removePrefix= false
 //    var oscServer   = true
     var prefix      = DefaultPrefix
     var helpCount   = 0
@@ -227,6 +230,7 @@ object Launcher {
 //        case Switch_NoServer                    => oscServer  = false
         case Switch_Prefix                      => ai += 1; prefix = args(ai)
         case Switch_List                        => listPrefixes = true
+        case Switch_Remove                      => removePrefix = true
         case Switch_Help =>
           helpCount += 1
           if (helpCount == 2) appArgsB += Switch_Help
@@ -261,9 +265,17 @@ object Launcher {
       sys.exit()
     }
 
-    val cacheBaseF  = new File(cacheBase, prefix)
-    val dataBaseF   = new File(dataBase, prefix)
-    val configBaseF = new File(configBase, prefix)
+    val cacheBaseF  = new File(cacheBase  , prefix)
+    val dataBaseF   = new File(dataBase   , prefix)
+    val configBaseF = new File(configBase , prefix)
+
+    if (removePrefix) {
+      deleteDirectory(cacheBaseF  )
+      deleteDirectory(dataBaseF   )
+      deleteDirectory(configBaseF )
+      sys.exit()
+    }
+
     val appArgs     = appArgsB.result()
     implicit val cfg: Config = Config(headless = headless, verbose = verbose, offline = offline, checkNow = checkNow,
       selectVersion = selVersion, /*oscServer = oscServer,*/
@@ -322,15 +334,20 @@ object Launcher {
 
   private def deleteDirectory(d: File): Unit = {
     var done = Set.empty[File]
+//    var failed  = List.empty[File]
     def loop(child: File): Unit = if (!done.contains(child)) {
       done += child
       if (child.isDirectory) {
         val cc = child.listFiles()
         if (cc != null) cc.foreach(loop)
       }
-      child.delete()
+      if (!child.delete()) {
+//        failed = child :: failed
+        Console.err.println(s"Failed to delete $child")
+      }
     }
     loop(d)
+//    if (failed.isEmpty) Nil else failed.reverse
   }
 
   private def install(inst0: Installation, version: String)

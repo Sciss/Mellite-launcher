@@ -36,8 +36,9 @@ The following command line options are available:
 |`--check-update`  |force update check.|
 |`--select-version`|force version selection (up- or downgrade).|
 |`--headless`, `-h`|headless mode (no GUI windows). Passed on to the application.|
-|`--prefix <name>` |installation prefix (default: 'coursier'). Allows to install multiple versions.
-|`--list`          |list installed prefixes and quit.
+|`--prefix <name>` |installation prefix (default: 'coursier'). Allows to install multiple versions.|
+|`--list`          |list installed prefixes and quit.|
+|`--remove`        |remove the installation data for given prefix, and quit.|
 |`--help`          |print this information. Use twice to get Mellite application help.|
 
 Thus, once a full Mellite application version is installed, you can
@@ -50,9 +51,17 @@ which allows you to up- or downgrade to any published version of Mellite,
 which can be useful if there is a newly introduced bug, or you need to open
 a legacy workspace.
 
+Unless `--offline` is selected, using the launcher also allows Mellite to be restarted
+from its preferences dialog when making changes that require restart, such as changing
+the look-and-feel.
+
 ## uninstall
 
-In general, updating the Mellite version will remove the previous version. You can wipe all date
+In general, updating the Mellite version will remove the previous version. The easiest approach is
+to list the installed prefixes via `--list`, then to remove an installation via
+`--prefix <name> --remove`.
+
+You can also wipe all date
 by deleting the [application data directory](https://github.com/harawata/appdirs). The location depends on
 the operating system:
 
