@@ -1,7 +1,7 @@
 [Desktop Entry]
-Name=Mellite-launcher
+Name=Mellite
 Version=0.1.0-SNAPSHOT
-GenericName=Mellite-launcher
+GenericName=Mellite
 Comment=Mellite Computer Music Environment
 Exec=/usr/share/mellite-launcher/bin/mellite-launcher %F
 StartupWMClass=de-sciss-mellite-Mellite
