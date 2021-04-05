@@ -89,10 +89,12 @@ object Launcher {
         case NonFatal(_) => ()
       }
       val currentVersion  = p.getProperty(KeyAppVersion, "")
-      val nextUpdateTime  = Option(p.getProperty(KeyNextUpdate)).flatMap(_.toLongOption)
-        .getOrElse(System.currentTimeMillis())
       val lastUpdateTime  = if (currentVersion.isEmpty) Long.MinValue else
         Option(p.getProperty(KeyLastUpdate)).flatMap(_.toLongOption).getOrElse(Long.MinValue)
+      val nextUpdateTime  = Option(p.getProperty(KeyNextUpdate)).flatMap(_.toLongOption)
+        .getOrElse(System.currentTimeMillis())
+      val updateInterval  = Option(p.getProperty(KeyUpdateInterval)).flatMap(_.toLongOption)
+        .getOrElse(604800000L)  // defaults to one week -- 7 * 24 * 60 * 60 * 1000L
 
       def getJars(key: String) = {
         val v = p.getProperty(key)
@@ -105,6 +107,7 @@ object Launcher {
         currentVersion  = currentVersion,
         lastUpdateTime  = lastUpdateTime,
         nextUpdateTime  = nextUpdateTime,
+        updateInterval  = updateInterval,
         jars            = jars,
         oldJars         = oldJars,
       )
@@ -118,9 +121,10 @@ object Launcher {
 
       try {
         p.put(KeyLauncherVersion, Launcher.version)
-        p.put(KeyAppVersion, i.currentVersion)
-        p.put(KeyLastUpdate, i.lastUpdateTime.toString)
-        p.put(KeyNextUpdate, i.nextUpdateTime.toString)
+        p.put(KeyAppVersion     , i.currentVersion)
+        p.put(KeyLastUpdate     , i.lastUpdateTime.toString)
+        p.put(KeyNextUpdate     , i.nextUpdateTime.toString)
+        p.put(KeyUpdateInterval , i.nextUpdateTime.toString)
         putJars(KeyJars   , i.jars    )
         putJars(KeyOldJars, i.oldJars )
         cfg.propFile.getParentFile.mkdirs()
@@ -139,6 +143,7 @@ object Launcher {
     private final val KeyAppVersion       = "app-version"
     private final val KeyLastUpdate       = "last-update"
     private final val KeyNextUpdate       = "next-update"
+    private final val KeyUpdateInterval   = "update-interval"
     private final val KeyJars             = "jars"
     private final val KeyOldJars          = "old-jars"
     private final val KeyLauncherVersion  = "launcher-version"
@@ -146,21 +151,31 @@ object Launcher {
 
   /**
     *   @param  currentVersion    empty if undefined (then `lastUpdateTime` would be `LongMinValue` as well)
-    *   @param  lastUpdateTime   `Long.MinValue` if fresh installation
-    *   @param  nextUpdateTime   `Long.MaxValue` if disabled
+    *   @param  lastUpdateTime    system time (milliseconds). `Long.MinValue` if fresh installation
+    *   @param  nextUpdateTime    system time (milliseconds). `Long.MaxValue` if disabled
+    *   @param  updateInterval    milliseconds, `Long.MaxValue` if disabled
     *   @param  oldJars           if non-empty, they should be deleted after the app process has started
     */
-  final case class Installation(currentVersion: String, lastUpdateTime: Long, nextUpdateTime: Long,
+  final case class Installation(currentVersion: String,
+                                lastUpdateTime: Long, nextUpdateTime: Long, updateInterval: Long,
                                 jars: Seq[File], oldJars: Seq[File]) {
     def isInstalled: Boolean = lastUpdateTime > Long.MinValue
 
+    def newUpdateTime(from: Long): Long =
+      if (updateInterval == Long.MaxValue) updateInterval else from + updateInterval
+
     def write()(implicit cfg: Config): Unit = Installation.write(this)
+
+    def lastUpdateTimeS: String = if (lastUpdateTime == Long.MinValue) "never" else new Date(lastUpdateTime).toString
+    def nextUpdateTimeS: String = if (nextUpdateTime == Long.MaxValue) "never" else new Date(nextUpdateTime).toString
+    def updateIntervalS: String = if (updateInterval == Long.MaxValue) "never" else s"${updateInterval / 60000}h"
 
     override def toString: String = {
       s"""$productPrefix(
          |  currentVersion = $currentVersion",
-         |  lastUpdateTime = ${new Date(lastUpdateTime)}
-         |  nextUpdateTime = ${new Date(nextUpdateTime)}
+         |  lastUpdateTime = $lastUpdateTimeS
+         |  nextUpdateTime = $nextUpdateTimeS
+         |  updateInterval = $updateIntervalS
          |  #jars = ${jars.size},
          |  #oldJars = ${oldJars.size}
          |)
@@ -399,9 +414,7 @@ object Launcher {
       inst0.copy(
         currentVersion  = version,
         lastUpdateTime  = now,
-        nextUpdateTime  = if (inst0.nextUpdateTime == Long.MaxValue) Long.MaxValue else {
-          now + 604800000L // (7 * 24 * 60 * 60 * 1000L) // roughly one week
-        },
+        nextUpdateTime  = inst0.newUpdateTime(now),
         jars            = jars,
         oldJars         = inst0.jars,
       )
@@ -506,12 +519,15 @@ object Launcher {
     implicit lazy val cacheResolve: FileCache[Task] = FileCache[Task](cacheDir)
       .withTtl(1.hour)  // XXX TODO which value here
 
-    val autoCheck   = now >= inst0.nextUpdateTime
+    val autoCheck = now >= inst0.nextUpdateTime
+    if (verbose) {
+      println(s"auto-check: now ${new Date(now)} >= ${inst0.nextUpdateTimeS} ? $autoCheck")
+    }
     val shouldCheck = !inst0.isInstalled || cfg.checkNow || cfg.selectVersion || autoCheck
 
     def stickToOld: Future[Installation] =
       if (inst0.isInstalled) {
-        val inst1 = if (!autoCheck) inst0 else inst0.copy(nextUpdateTime = now + 604800000L)
+        val inst1 = if (!autoCheck) inst0 else inst0.copy(nextUpdateTime = inst0.newUpdateTime(now))
         Future.successful(inst1)
       }
       else Future.failed(new Exception(s"No version installed. Re-run with network enabled!"))
