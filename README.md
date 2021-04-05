@@ -20,7 +20,7 @@ Mellite versions becomes as simple as publishing new Maven artifacts.
 
 The project is (C)opyright 2020–2021 by Hanns Holger Rutz. All rights reserved.
 It is released under 
-the [GNU Affero General Public License](https://git.iem.at/sciss/Mellite-launcher/raw/main/LICENSE) v3+ 
+the [GNU Lesser General Public License](https://git.iem.at/sciss/Mellite-launcher/raw/main/LICENSE) v2.1+ 
 and comes with absolutely no warranties. To contact the author, send an e-mail to `contact at sciss.de`.
 
 ## requirements / installation

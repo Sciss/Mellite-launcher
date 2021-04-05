@@ -28,7 +28,7 @@ lazy val commonSettings = Seq(
   organization  := "de.sciss",
   homepage      := Some(url(s"https://git.iem.at/$baseName")),
   description   := "Application launcher and updater for Mellite",
-  licenses      := Seq("AGPL v3+" -> url("http://www.gnu.org/licenses/agpl-3.0.txt")),
+  licenses      := Seq("LGPL v2.1+" -> url("http://www.gnu.org/licenses/lgpl-2.1.txt")),
   scalacOptions ++= Seq(
     "-deprecation", "-unchecked", "-feature", "-encoding", "utf8", "-Xlint:-stars-align,_", "-Xsource:2.13"
   ),
