@@ -13,9 +13,11 @@
 
 package de.sciss.mellite
 
-import java.awt.{Color, EventQueue, Font, Graphics, Graphics2D, RenderingHints}
-import javax.swing.{JOptionPane, JWindow}
-import scala.concurrent.{Future, Promise}
+import java.awt.{BorderLayout, Color, Dimension, EventQueue, Font, Graphics, Graphics2D, RenderingHints}
+import javax.swing.text.html.HTMLEditorKit
+import javax.swing.{JLabel, JOptionPane, JPanel, JScrollPane, JTextPane, JWindow, ScrollPaneConstants, SwingUtilities}
+import scala.concurrent.ExecutionContext.Implicits._
+import scala.concurrent.{Future, Promise, blocking}
 import scala.math.min
 
 class Splash extends JWindow with Reporter { splash =>
@@ -63,20 +65,60 @@ class Splash extends JWindow with Reporter { splash =>
     pr.future
   }
 
-  override def showConfirm(text: String, isYesNo: Boolean): Future[Boolean] = {
+  override def showConfirm(text: String, isYesNo: Boolean, extra: Future[Seq[String]]): Future[Boolean] = {
     val pr = Promise[Boolean]()
     EventQueue.invokeLater(() => {
       val title   = "Choose"
       val tpe     = if (isYesNo) JOptionPane.YES_NO_OPTION else JOptionPane.OK_CANCEL_OPTION
-      val code    = JOptionPane.showConfirmDialog(null, text, title, tpe, JOptionPane.QUESTION_MESSAGE)
-      val res     = if (isYesNo) code == JOptionPane.YES_OPTION else code == JOptionPane.OK_OPTION
+      val msg     = new JPanel(new BorderLayout(0, 8))
+      val text1   = if (!text.contains("\n")) text else {
+        s"<html><body>${text.split("\n").mkString("<p>")}</body>"
+      }
+      val lbQuery = new JLabel(text1)  // XXX TODO if contains newlines, use HTML or text area
+      msg.add(lbQuery, BorderLayout.NORTH)
+      lazy val lbExtra = {
+//        val lb = new JTextArea(12, 32)
+//        lb.setLineWrap(true)
+//        val lb = new JEditorPane("text/html", "")
+        val lb = new JTextPane // ("text/html", "")
+//        lb.setMaximumSize(new Dimension(400, 240))
+        lb.setPreferredSize(new Dimension(400, 240))
+        lb.setEditorKit(new HTMLEditorKit)
+        lb.setEditable(false)
+        val sc = new JScrollPane(lb,
+          ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+          ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER,
+        )
+        msg.add(sc, BorderLayout.CENTER)
+        lb
+      }
+      extra.foreach { sq =>
+        if (sq.nonEmpty) EventQueue.invokeLater(() => {
+          val par   = sq.map(p => s"<li>$p</li>")
+          val text  = par.mkString("<html><body><ul>", "", "</ul></body>")
+          lbExtra.setText(text)
+          lbExtra.setCaretPosition(0)
+//          lbExtra.scrollToReference("top")
+          Option(SwingUtilities.getWindowAncestor(lbExtra)).foreach { w =>
+            w.pack()
+            w.setLocationRelativeTo(null)
+//            lbExtra.scrollRectToVisible(new Rectangle(0, 0, 4, 4))
+          }
+        })
+      }
       splash.toFront()
+      // modal! make sure it comes after `extra.foreach`
+      val code = blocking {
+        JOptionPane.showConfirmDialog(null, msg, title, tpe, JOptionPane.QUESTION_MESSAGE)
+      }
+      val res = if (isYesNo) code == JOptionPane.YES_OPTION else code == JOptionPane.OK_OPTION
       pr.success(res)
     })
     pr.future
   }
 
-  override def showOptions(text: String, items: Seq[String], default: Option[String]): Future[Option[String]] = {
+  override def showOptions(text: String, items: Seq[String], default: Option[String],
+                           extra: String => Future[Seq[String]]): Future[Option[String]] = {
     val pr = Promise[Option[String]]()
     EventQueue.invokeLater(() => {
       val title   = "Choose"

@@ -70,7 +70,8 @@ class ConsoleReporter extends Thread("reporter") with Reporter {
     Future.unit
   }
 
-  override def showConfirm(text: String, isYesNo: Boolean): Future[Boolean] = {
+  // does not support 'extra'
+  override def showConfirm(text: String, isYesNo: Boolean, extra: Future[Seq[String]]): Future[Boolean] = {
     printStatus(s"[Confirm] $text")
     Future {
       var res = Option.empty[Boolean]
@@ -90,7 +91,9 @@ class ConsoleReporter extends Thread("reporter") with Reporter {
     }
   }
 
-  override def showOptions(text: String, items: Seq[String], default: Option[String]): Future[Option[String]] = {
+  // does not support 'extra'
+  override def showOptions(text: String, items: Seq[String], default: Option[String],
+                           extra: String => Future[Seq[String]]): Future[Option[String]] = {
     printStatus(s"[Query] $text")
     val itemsI = items.map(s => if (default.contains(s)) s"* $s" else s"  $s")
     println(itemsI.mkString("\n"))

@@ -366,7 +366,7 @@ object Launcher {
 //    if (failed.isEmpty) Nil else failed.reverse
   }
 
-  private def obtainChangeNotes(version: String)(implicit r: Reporter, cfg: Config,
+  private def obtainChangeNotes(version: String)(implicit cfg: Config,
                                                  cacheResolve: FileCache[Task]): Future[Seq[String]] = {
     val appDep      = Dependency(appMod, version)
     val appDepPOM   = appDep.withTransitive(false)
@@ -449,16 +449,16 @@ object Launcher {
         .addDependencies(appDep).withRepositories(repos)
       val cacheArt  = cache.FileCache[Task](cfg.artDir)
 
-      val changeNotes = obtainChangeNotes(version)
-      changeNotes.onComplete {
-        case Success(text) =>
-          println("---- Changes ----")
-          println(text.mkString(" - ", "\n - ", ""))
-
-        case Failure(ex) =>
-          println("POM failed load:")
-          ex.printStackTrace()
-      }
+//      val changeNotes = obtainChangeNotes(version)
+//      changeNotes.onComplete {
+//        case Success(text) =>
+//          println("---- Changes ----")
+//          println(text.mkString(" - ", "\n - ", ""))
+//
+//        case Failure(ex) =>
+//          println("POM failed load:")
+//          ex.printStackTrace()
+//      }
 
       resolve.future().flatMap { resolution =>
         r.status = "Fetching libraries..."
@@ -510,7 +510,13 @@ object Launcher {
   private def dialogNewerVersion(inst0: Installation, latest: String)
                                 (implicit r: Reporter, cfg: Config,
                                  cacheResolve: FileCache[Task]): Future[Installation] = {
-    val futOk = r.showConfirm(s"A new version $latest is available.\nDownload and install?", isYesNo = true)
+    val futNotes = obtainChangeNotes(latest)
+//      .andThen { case res =>
+//        println("NOTES result:")
+//        println(res)
+//      }
+    val futOk = r.showConfirm(s"A new version $latest is available.\nDownload and install?",
+      isYesNo = true, extra = futNotes)
     futOk.flatMap { update =>
       if (!update) Future.successful(inst0)
       else install(inst0, version = latest)
