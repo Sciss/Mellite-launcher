@@ -37,6 +37,7 @@ The following command line options are available:
 |`--select-version`|force version selection (up- or downgrade).|
 |`--headless`, `-h`|headless mode (no GUI windows). Passed on to the application.|
 |`--prefix <name>` |installation prefix (default: 'coursier'). Allows to install multiple versions.
+|`--list`          |list installed prefixes and quit.
 |`--help`          |print this information. Use twice to get Mellite application help.|
 
 Thus, once a full Mellite application version is installed, you can

@@ -28,7 +28,7 @@ import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 import scala.util.control.NonFatal
 
 object Launcher {
@@ -53,8 +53,9 @@ object Launcher {
 
   private final val coursierDir     = "cs"
   private final val DefaultPrefix   = "default"
+  private final val propFileName    = "launcher.properties"
 
-  /** Minimum Mellite version that understands the launcher arguments */
+  /** Minimum Mellite version that understands the arguments `--launcher` and `--prefix` */
   private final val Mellite_API1    = "3.4.99"
 
   final case class Config(headless: Boolean, verbose: Boolean, offline: Boolean, checkNow: Boolean,
@@ -68,14 +69,17 @@ object Launcher {
     }
     val cacheDir  = new File(cacheBase  , coursierDir)  // always use the same cache
     val artDir    = new File(dataBase   , coursierDir)
-    val propF     = new File(configBase , "launcher.properties")
+    val propFile  = new File(configBase , propFileName)
   }
 
   object Installation {
-    def read()(implicit cfg: Config): Installation = {
+    def read()(implicit cfg: Config): Installation =
+      readProperties(cfg.propFile)
+
+    def readProperties(f: File): Installation = {
       val p = new JProperties()
       try {
-        val fi = new FileInputStream(cfg.propF)
+        val fi = new FileInputStream(f)
         try {
           p.load(fi)
         } finally {
@@ -119,8 +123,8 @@ object Launcher {
         p.put(KeyNextUpdate, i.nextUpdateTime.toString)
         putJars(KeyJars   , i.jars    )
         putJars(KeyOldJars, i.oldJars )
-        cfg.propF.getParentFile.mkdirs()
-        val fo = new FileOutputStream(cfg.propF)
+        cfg.propFile.getParentFile.mkdirs()
+        val fo = new FileOutputStream(cfg.propFile)
         try {
           p.store(fo, "Mellite launcher")
         } finally {
@@ -172,6 +176,7 @@ object Launcher {
 //  private val Switch_NoServer     = "--no-server"
   private val Switch_Prefix       = "--prefix"
   private val Switch_Help         = "--help"
+  private val Switch_List         = "--list"
 
   private val Switch_Headless     = "--headless"
   private val Switch_HeadlessS    = "-h"
@@ -189,6 +194,7 @@ object Launcher {
         |  $Switch_SelectVersion force version selection (up- or downgrade).
         |  $Switch_Headless, $Switch_HeadlessS   headless mode (no GUI windows). Passed on to the application.
         |  $Switch_Prefix $nameArg  installation prefix (default: '$DefaultPrefix'). Allows to install multiple versions.
+        |  $Switch_List           list installed prefixes and quit.
         |  $Switch_Help           print this information. Use twice to get Mellite application help.
         |
         |Any other arguments are passed on to the Mellite application.
@@ -204,6 +210,7 @@ object Launcher {
     var checkNow    = false
     var offline     = false
     var selVersion  = false
+    var listPrefixes= false
 //    var oscServer   = true
     var prefix      = DefaultPrefix
     var helpCount   = 0
@@ -219,6 +226,7 @@ object Launcher {
         case Switch_SelectVersion               => selVersion = true
 //        case Switch_NoServer                    => oscServer  = false
         case Switch_Prefix                      => ai += 1; prefix = args(ai)
+        case Switch_List                        => listPrefixes = true
         case Switch_Help =>
           helpCount += 1
           if (helpCount == 2) appArgsB += Switch_Help
@@ -239,12 +247,24 @@ object Launcher {
 
     val appDirs     = AppDirsFactory.getInstance
     val cacheBase   = appDirs.getUserCacheDir (appId, /* version */ null, /* author */ groupId)
-    val cacheBaseF  = /*if (prefix.isEmpty) new File(cacheBase) else*/ new File(cacheBase, prefix)
     val dataBase    = appDirs.getUserDataDir  (appId, /* version */ null, /* author */ groupId)
-    val dataBaseF   = /*if (prefix.isEmpty) new File(dataBase) else*/ new File(dataBase, prefix)
     val configBase  = appDirs.getUserConfigDir(appId, /* version */ null, /* author */ groupId)
-    val configBaseF = /*if (prefix.isEmpty) new File(configBase) else*/ new File(configBase, prefix)
-    val appArgs   = appArgsB.result()
+
+    if (listPrefixes) {
+      val found     = new File(configBase).listFiles((pre: File) => pre.isDirectory && new File(pre, propFileName).isFile)
+      val versions  = found.map { pre =>
+        val v = Try { Installation.readProperties(new File(pre, propFileName)).currentVersion } .getOrElse("?")
+        s"  ${pre.getName} : $v"
+      } .sorted
+      println(s"The following ${versions.length} prefixes and versions are found:")
+      println(versions.mkString("\n"))
+      sys.exit()
+    }
+
+    val cacheBaseF  = new File(cacheBase, prefix)
+    val dataBaseF   = new File(dataBase, prefix)
+    val configBaseF = new File(configBase, prefix)
+    val appArgs     = appArgsB.result()
     implicit val cfg: Config = Config(headless = headless, verbose = verbose, offline = offline, checkNow = checkNow,
       selectVersion = selVersion, /*oscServer = oscServer,*/
       cacheBase = cacheBaseF, dataBase = dataBaseF, configBase = configBaseF,
@@ -270,7 +290,8 @@ object Launcher {
   private val appMod = Module(Organization(groupId), ModuleName(artifactId))
   private val repos  = Resolve.defaultRepositories
 
-  private var restartAction: () => Unit = () => ()
+  private val QuitAction    : () => Unit = () => sys.exit()
+  private var restartAction : () => Unit = QuitAction
 
   private def obtainVersion(select: Boolean)
                            (implicit r: Reporter, cfg: Config, cacheResolve: FileCache[Task]): Future[Option[String]] = {
@@ -409,6 +430,13 @@ object Launcher {
     (t, r)
   }
 
+  private def restartSame(inst: Installation)(implicit cfg: Config, cacheResolve: FileCache[Task]) = () => {
+    EventQueue.invokeLater { () =>
+      implicit val r: Reporter = new Splash
+      runProcess(inst, Future.successful(inst))
+    }
+  }
+
   private def setupOSC(inst0: Installation)(implicit cfg: Config, cacheResolve: FileCache[Task]): Int = {
     val (t, r) = oscClient
     if (cfg.verbose) {
@@ -417,29 +445,31 @@ object Launcher {
     }
     r.action = {
       case (osc.Message("/check-update", flags: Int, _ @ _*), sender) =>
-        implicit val r: Reporter = new Splash
-        val select = (flags & 0x01) != 0
-        val futVersion: Future[Option[String]] = obtainVersion(select = select)
-        val futInstall: Future[Installation] = futVersion.flatMap {
-          case Some(v)  => dialogCompareVersion(inst0, latest = v, explicit = true)
-          case None     => Future.successful(inst0)
-        }
-        futInstall.onComplete {
-          case Success(inst1) =>
-            if (inst0 != inst1) {
-              restartAction = { () =>
-                restartAction = () => ()
-                runProcess(inst0, Future.successful(inst1))
+        EventQueue.invokeLater { () =>
+          implicit val r: Reporter = new Splash
+          val select = (flags & 0x01) != 0
+          val futVersion: Future[Option[String]] = obtainVersion(select = select)
+          val futInstall: Future[Installation] = futVersion.flatMap {
+            case Some(v)  => dialogCompareVersion(inst0, latest = v, explicit = true)
+            case None     => Future.successful(inst0)
+          }
+          futInstall.onComplete {
+            case Success(inst1) =>
+              if (inst0 != inst1) {
+                restartAction = { () =>
+                  restartAction = QuitAction
+                  runProcess(inst0, Future.successful(inst1))
+                }
+                t.send(osc.Message("/reboot"), sender)
+              } else {
+                r.dispose()
               }
-              t.send(osc.Message("/reboot"), sender)
-            } else {
-              r.dispose()
-            }
 
-          case Failure(ex) =>
-            val futM = r.showMessage(s"Could not update: ${ex.getMessage}", isError = true)
-            futM.andThen { case _ => r.dispose() }
-            ex.printStackTrace()
+            case Failure(ex) =>
+              val futM = r.showMessage(s"Could not update: ${ex.getMessage}", isError = true)
+              futM.andThen { case _ => r.dispose() }
+              ex.printStackTrace()
+          }
         }
 
       case (other, _) =>
@@ -549,34 +579,38 @@ object Launcher {
 
       val pb  = new ProcessBuilder(cmd +: argsOut: _*)
       pb.inheritIO()
+      val newInst = inst1 != inst0
+      val instOut = if (!newInst) inst0 else inst1.copy(oldJars = Nil)
+      restartAction = restartSame(instOut)
       val p   = pb.start()
 
-      val instOut = if (inst1 == inst0) inst0 else {
-        val inst2 = if (inst1.oldJars.isEmpty) inst1 else {
+      if (newInst) {
+        if (inst1.oldJars.nonEmpty) {
           // println(s"OLD JARS ${inst1.oldJars.size}")
           // println(inst1.oldJars.mkString("\n"))
           val oldDirs = inst1.oldJars.iterator.flatMap { f =>
+            // make sure we only delete directories within `dataBase`, because
+            // when Coursier detects locally published artifacts, it does not
+            // copy them but simply forwards their location (`~/.ivy2/local/...`).
             Option(f.getParentFile).filter(isInDirectory(_, cfg.dataBase))
           }.toSet
 
           // println("OLD DIRS")
           // println(oldDirs.mkString("\n"))
-          val newDirs = inst1.jars   .flatMap(f => Option(f.getParentFile)).toSet
+          val newDirs = inst1.jars.iterator.flatMap(f => Option(f.getParentFile)).toSet
           val delDirs = oldDirs -- newDirs
           delDirs.foreach { d =>
             if (cfg.verbose) println(s"DELETE $d")
             deleteDirectory(d)
           }
-          inst1.copy(oldJars = Nil)
         }
         if (cfg.verbose) {
           // println("-- old")
           // println(inst0)
-          println(s"WRITE PROPERTIES - ${cfg.propF}")
-          println(inst1)
+          println(s"WRITE PROPERTIES - ${cfg.propFile}")
+          println(instOut)
         }
-        inst2.write()
-        inst2
+        instOut.write()
       }
 
       RunningProcess(instOut, p, _hasOSC)
