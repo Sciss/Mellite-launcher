@@ -20,7 +20,7 @@ import coursier.util.Task
 import net.harawata.appdirs.AppDirsFactory
 
 import java.awt.EventQueue
-import java.io.{File, FileInputStream}
+import java.io.{File, FileInputStream, FileOutputStream}
 import java.util.{Properties => JProperties}
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits._
@@ -30,6 +30,18 @@ import scala.util.{Failure, Success}
 import scala.util.control.NonFatal
 
 object Launcher {
+  def name    : String = buildInfString("name" )
+  def version : String = buildInfString("version" )
+  def fullName: String = s"$name v$version"
+
+  private def buildInfString(key: String): String = try {
+    val clazz = Class.forName("de.sciss.mellite.LauncherInfo")
+    val m     = clazz.getMethod(key)
+    m.invoke(null).toString
+  } catch {
+    case NonFatal(_) => "?"
+  }
+
   // eventually these could become settings of a generic launcher
   final val groupId         = "de.sciss"
   final val artifactId      = "mellite-app_2.13"
@@ -39,7 +51,8 @@ object Launcher {
   /** Minimum Mellite version that understands the launcher port argument */
   final val Min_Mellite_LauncherArg = "3.5.0"
 
-  final case class Config(headless: Boolean, verbose: Boolean, offline: Boolean, force: Boolean,
+  final case class Config(headless: Boolean, verbose: Boolean, offline: Boolean, checkNow: Boolean,
+                          selectVersion: Boolean,
                           cacheBase: String, dataBase: String, appArgs: Seq[String]) {
     if (verbose) {
       println(s"Cache path: $cacheBase")
@@ -69,8 +82,10 @@ object Launcher {
       val lastUpdateTime  = if (currentVersion.isEmpty) Long.MinValue else
         Option(p.getProperty(KeyLastUpdate)).flatMap(_.toLongOption).getOrElse(Long.MinValue)
 
-      def getJars(key: String) =
-        p.getProperty(key, "").split(File.pathSeparatorChar).iterator.map(new File(_)).toSeq
+      def getJars(key: String) = {
+        val v = p.getProperty(key)
+        if (v == null) Nil else v.split(File.pathSeparatorChar).iterator.map(new File(_)).toSeq
+      }
 
       val jars    = getJars(KeyJars)
       val oldJars = getJars(KeyOldJars)
@@ -83,11 +98,36 @@ object Launcher {
       )
     }
 
-    private final val KeyAppVersion = "app-version"
-    private final val KeyLastUpdate = "last-update"
-    private final val KeyNextUpdate = "next-update"
-    private final val KeyJars       = "jars"
-    private final val KeyOldJars    = "old-jars"
+    def write(i: Installation)(implicit cfg: Config): Unit = {
+      val p = new JProperties()
+
+      def putJars(key: String, sq: Seq[File]): Unit =
+        if (sq.isEmpty) p.remove(key) else p.put(key, sq.mkString(File.pathSeparator))
+
+      try {
+        p.put(KeyLauncherVersion, Launcher.version)
+        p.put(KeyAppVersion, i.currentVersion)
+        p.put(KeyLastUpdate, i.lastUpdateTime.toString)
+        p.put(KeyNextUpdate, i.nextUpdateTime.toString)
+        putJars(KeyJars   , i.jars    )
+        putJars(KeyOldJars, i.oldJars )
+        val fo = new FileOutputStream(cfg.propF)
+        try {
+          p.store(fo, "Mellite launcher")
+        } finally {
+          fo.close()
+        }
+      } catch {
+        case NonFatal(_) => ()
+      }
+    }
+
+    private final val KeyAppVersion       = "app-version"
+    private final val KeyLastUpdate       = "last-update"
+    private final val KeyNextUpdate       = "next-update"
+    private final val KeyJars             = "jars"
+    private final val KeyOldJars          = "old-jars"
+    private final val KeyLauncherVersion  = "launcher-version"
   }
 
   /**
@@ -98,24 +138,60 @@ object Launcher {
     */
   final case class Installation(currentVersion: String, lastUpdateTime: Long, nextUpdateTime: Long,
                                 jars: Seq[File], oldJars: Seq[File]) {
-//    def write(): Unit
-
     def isInstalled: Boolean = lastUpdateTime > Long.MinValue
+
+    def write()(implicit cfg: Config): Unit = Installation.write(this)
   }
 
-  private val removeAppArgs = Seq("--verbose", "-V", "--offline", "--check-update")
+  private val Switch_Verbose      = "--verbose"
+  private val Switch_VerboseS     = "-V"
+  private val Switch_Offline      = "--offline"
+  private val Switch_CheckUpdate  = "--check-update"
+  private val Switch_SelectVersion= "--select-version"
+  private val Switch_Help         = "--help"
+
+  private val Switch_Headless     = "--headless"
+  private val Switch_HeadlessS    = "-h"
+
+  private val removeAppArgs = Seq(Switch_Verbose, Switch_VerboseS, Switch_Offline, Switch_CheckUpdate,
+    Switch_SelectVersion, Switch_Help)
+
+  private def printHelp(): Unit = {
+    println(
+      s"""$fullName
+        |
+        |  $Switch_Verbose, $Switch_VerboseS    print verbose information during update.
+        |  $Switch_Offline        do not check online for updates.
+        |  $Switch_CheckUpdate   force update check.
+        |  $Switch_SelectVersion force version selection (up- or downgrade).
+        |  $Switch_Headless, $Switch_HeadlessS   headless mode (no GUI windows).
+        |  $Switch_Help           print this information. Use twice to get Mellite application help.
+        |
+        |Any other arguments are passed on to the Mellite application.
+        |""".stripMargin
+    )
+  }
 
   def main(args: Array[String]): Unit = {
-    val headless  = args.exists(p => p == "--headless" || p == "-h")
-    val verbose   = args.exists(p => p == "--verbose"  || p == "-V")
-    val force     = args.contains("--check-update")
-    val offline   = args.contains("--offline")
+    val help = args.contains(Switch_Help)
+    if (help) {
+      printHelp()
+      if (args.count(_ == Switch_Help) == 1) {
+        sys.exit(1)
+      }
+    }
+
+    val headless  = args.exists(p => p == Switch_Headless || p == Switch_HeadlessS)
+    val verbose   = args.exists(p => p == Switch_Verbose  || p == Switch_VerboseS)
+    val force     = args.contains(Switch_CheckUpdate)
+    val offline   = args.contains(Switch_Offline)
+    val selVersion= args.contains(Switch_SelectVersion)
     val appDirs   = AppDirsFactory.getInstance
     val cacheBase = appDirs.getUserCacheDir ("mellite", /* version */ null, /* author */ "de.sciss")
     val dataBase  = appDirs.getUserDataDir  ("mellite", /* version */ null, /* author */ "de.sciss")
     val appArgs   = args.diff(removeAppArgs)
-    implicit val cfg: Config = Config(headless = headless, verbose = verbose, offline = offline, force = force,
-      cacheBase = cacheBase, dataBase = dataBase, appArgs = appArgs)
+    implicit val cfg: Config = Config(headless = headless, verbose = verbose, offline = offline, checkNow = force,
+      selectVersion = selVersion, cacheBase = cacheBase, dataBase = dataBase, appArgs = appArgs)
     val inst0     = Installation.read()
 
     runWith(inst0)
@@ -148,9 +224,31 @@ object Launcher {
   }
 
   private def obtainVersions()
-                            (implicit cacheResolve: FileCache[Task]): Future[core.Versions] = {
+                            (implicit cfg: Config, cacheResolve: FileCache[Task]): Future[core.Versions] = {
     val versions = Versions(cacheResolve).withModule(appMod).withRepositories(repos)
-    versions.result().future().map(_.versions)
+    versions.result().future().map { res =>
+      val vs = res.versions
+      if (cfg.verbose) {
+        println("------ Available Versions ------")
+        val av = vs.available
+        av.foreach(println)
+        if (av.nonEmpty) println(s"Latest: ${vs.latest} - updated: ${vs.lastUpdated}")
+      }
+      vs
+    }
+  }
+
+  private def deleteDirectory(d: File): Unit = {
+    var done = Set.empty[File]
+    def loop(child: File): Unit = if (!done.contains(child)) {
+      done += child
+      if (child.isDirectory) {
+        val cc = child.listFiles()
+        if (cc != null) cc.foreach(loop)
+      }
+      child.delete()
+    }
+    loop(d)
   }
 
   private def install(inst0: Installation, version: String)
@@ -198,11 +296,12 @@ object Launcher {
     }
 
     futFiles.map { jars =>
+      val now = System.currentTimeMillis()
       inst0.copy(
         currentVersion  = version,
-        lastUpdateTime  = System.currentTimeMillis(),
+        lastUpdateTime  = now,
         nextUpdateTime  = if (inst0.nextUpdateTime == Long.MaxValue) Long.MaxValue else {
-          inst0.nextUpdateTime + 604800000L // (7 * 24 * 60 * 60 * 1000L) // roughly one week
+          now + 604800000L // (7 * 24 * 60 * 60 * 1000L) // roughly one week
         },
         jars            = jars,
         oldJars         = inst0.jars,
@@ -218,6 +317,13 @@ object Launcher {
       if (!update) Future.successful(inst0)
       else install(inst0, version = latest)
     }
+  }
+
+  private def dialogSelectVersion(inst0: Installation, versions: core.Versions)
+                                (implicit r: Reporter, cfg: Config,
+                                 cacheResolve: FileCache[Task]): Future[Option[String]] = {
+    val default = if (versions.available.isEmpty) None else Some(versions.latest)
+    r.showOptions(s"Select a version to install", versions.available, default = default)
   }
 
   private def messageNoNewVersion(inst0: Installation)(implicit r: Reporter): Future[Unit] = {
@@ -236,28 +342,37 @@ object Launcher {
     implicit lazy val cacheResolve: FileCache[Task] = FileCache[Task](cacheDir)
       .withTtl(1.hour)  // XXX TODO which value here
 
-    val shouldCheck = !inst0.isInstalled || cfg.force || now >= inst0.nextUpdateTime
+    val shouldCheck = !inst0.isInstalled || cfg.checkNow || cfg.selectVersion || now >= inst0.nextUpdateTime
+
+    def stickToOld: Future[Installation] =
+      if (inst0.isInstalled) {
+        val inst1 = inst0.copy(nextUpdateTime = now + 604800000L)
+        Future.successful(inst1)
+      }
+      else Future.failed(new Exception(s"No version installed. Re-run with network enabled!"))
+
     val futInst: Future[Installation] = if (!offline && shouldCheck) {
       status = "Checking version..."
 
-      val futLatest: Future[String] = obtainVersions().map { vs =>
-        if (verbose) {
-          println("------ Available Versions ------")
-          val av = vs.available
-          av.foreach(println)
-          if (av.nonEmpty) println(s"Latest: ${vs.latest} - updated: ${vs.lastUpdated}")
+      val futVersions: Future[core.Versions] = obtainVersions()
+      val futVersion: Future[Option[String]] = if (!cfg.selectVersion) {
+        futVersions.map(vs => if (vs.available.isEmpty) None else Some(vs.latest))
+      } else {
+        futVersions.flatMap { vs =>
+          dialogSelectVersion(inst0, vs)
         }
-        vs.latest
       }
 
-      futLatest.transformWith {
-        case Success(latest) =>
-          if (!inst0.isInstalled) install(inst0, version = latest)
-          else if (Version(inst0.currentVersion) >= Version(latest)) {
-            val info = if (cfg.force) messageNoNewVersion(inst0) else Future.unit
+      futVersion.transformWith {
+        case Success(Some(v)) =>
+          if (!inst0.isInstalled || cfg.selectVersion) install(inst0, version = v)
+          else if (Version(inst0.currentVersion) >= Version(v)) {
+            val info = if (cfg.checkNow) messageNoNewVersion(inst0) else Future.unit
             info.map(_ => inst0)
           }
-          else dialogNewerVersion(inst0, latest)
+          else dialogNewerVersion(inst0, v)
+
+        case Success(None) => stickToOld
 
         case Failure(ex) =>
           if (inst0.isInstalled) Future.successful(inst0)
@@ -265,11 +380,10 @@ object Launcher {
       }
 
     } else {
-      if (inst0.isInstalled) Future.successful(inst0)
-      else Future.failed(new Exception(s"No version installed. Re-run with network enabled!"))
+      stickToOld
     }
 
-    val futProcess: Future[Process] = futInst.map { inst1 =>
+    val futProcess: Future[(Installation, Process)] = futInst.map { inst1 =>
       val addCP   = inst1.jars.iterator.map(_.getPath)
       val ph      = ProcessHandle.current()
       val pi      = ph.info()
@@ -307,7 +421,30 @@ object Launcher {
       val pb  = new ProcessBuilder(cmd +: argsOut: _*)
       pb.inheritIO()
       val p   = pb.start()
-      p
+
+      val instOut = if (inst1 == inst0) inst0 else {
+        val inst2 = if (inst1.oldJars.isEmpty) inst1 else {
+          // println(s"OLD JARS ${inst1.oldJars.size}")
+          // println(inst1.oldJars.mkString("\n"))
+          val oldDirs = inst1.oldJars.flatMap(f => Option(f.getParentFile)).toSet
+          // println("OLD DIRS")
+          // println(oldDirs.mkString("\n"))
+          val newDirs = inst1.jars   .flatMap(f => Option(f.getParentFile)).toSet
+          val delDirs = oldDirs -- newDirs
+          delDirs.foreach { d =>
+            if (verbose) println(s"DELETE $d")
+            deleteDirectory(d)
+          }
+          inst1.copy(oldJars = Nil)
+        }
+        if (verbose) {
+          println("WRITE PROPERTIES")
+        }
+        inst2.write()
+        inst2
+      }
+
+      (instOut, p)
     }
 
     futProcess.onComplete {
@@ -316,8 +453,9 @@ object Launcher {
         status = if (m == null) "Failed!" else s"Error: $m"
         ex.printStackTrace()
 
-      case Success(p) =>
+      case Success((_ /*instOut*/, p)) =>
         val alive = new Thread(() => {
+//          Thread.sleep(2000)
           r.dispose()
           waitFor(p, verbose = verbose)
         })

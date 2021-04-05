@@ -63,6 +63,7 @@ lazy val appSettings = Seq(
 )
 
 lazy val app = project.in(file("app"))
+  .enablePlugins(BuildInfoPlugin)
   .enablePlugins(JavaAppPackaging, DebianPlugin)
   .settings(commonSettings)
   .settings(pkgUniversalSettings)
@@ -80,6 +81,10 @@ lazy val app = project.in(file("app"))
       "org.slf4j"       %  "slf4j-api"    % deps.main.slf4j,      // logging (used by coursier)
       "org.slf4j"       %  "slf4j-simple" % deps.main.slf4j,      // logging (used by coursier)
     ),
+    // ---- build-info ----
+    buildInfoKeys     := Seq("name" -> baseName /* name */, version, scalaVersion),
+    buildInfoPackage  := "de.sciss.mellite",
+    buildInfoObject   := "LauncherInfo",
     // ---- packaging ----
     packageName in Universal := s"${appNameL}_${version.value}_all",
     name                      in Debian := appNameL,  // this is used for .deb file-name; NOT appName,

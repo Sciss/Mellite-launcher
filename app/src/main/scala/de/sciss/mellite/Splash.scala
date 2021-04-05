@@ -18,7 +18,7 @@ import javax.swing.{JOptionPane, JWindow}
 import scala.concurrent.{Future, Promise}
 import scala.math.min
 
-class Splash extends JWindow with Reporter {
+class Splash extends JWindow with Reporter { splash =>
   private var _status   = ""
   private var _version  = ""
   private var _progress = -1.0f
@@ -27,11 +27,12 @@ class Splash extends JWindow with Reporter {
 
   setSize(480, 160)
   setLocationRelativeTo(null)
-  setVisible(true)
+//  setVisible(true)
 
   override def status: String = _status
   override def status_=(value: String): Unit = if (_status != value) {
     _status = value
+    if (!isVisible) setVisible(true)
     repaint()
   }
 
@@ -56,6 +57,7 @@ class Splash extends JWindow with Reporter {
       val title = if (isError) "Error" else "Information"
       val tpe   = if (isError) JOptionPane.ERROR_MESSAGE else JOptionPane.INFORMATION_MESSAGE
       JOptionPane.showMessageDialog(null, text, title, tpe)
+      splash.toFront()
       pr.success(())
     })
     pr.future
@@ -68,6 +70,7 @@ class Splash extends JWindow with Reporter {
       val tpe     = if (isYesNo) JOptionPane.YES_NO_OPTION else JOptionPane.OK_CANCEL_OPTION
       val code    = JOptionPane.showConfirmDialog(null, text, title, tpe, JOptionPane.QUESTION_MESSAGE)
       val res     = if (isYesNo) code == JOptionPane.YES_OPTION else code == JOptionPane.OK_OPTION
+      splash.toFront()
       pr.success(res)
     })
     pr.future
@@ -79,9 +82,10 @@ class Splash extends JWindow with Reporter {
       val title   = "Choose"
       val itemsA  = items.toArray[AnyRef]
       val initVal = default.orNull
-      val code    = JOptionPane.showOptionDialog(null, text, title,
-        JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE, null, itemsA, initVal)
-      val res     = if (code < 0) None else Some(items(code))
+      val code    = JOptionPane.showInputDialog(null, text, title,
+        JOptionPane.QUESTION_MESSAGE, null, itemsA, initVal)
+      val res     = if (code == null) None else items.find(_ == code) // if (code < 0) None else Some(items(code))
+      splash.toFront()
       pr.success(res)
     })
     pr.future
