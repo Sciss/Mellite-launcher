@@ -31,6 +31,7 @@ class Splash extends Reporter { splash =>
   private var hasWin    = false
   private var _disposed = false
   private val alive     = new KeepAlive
+  private var hasDialog = false
 
   override def dispose(): Unit = {
     alive.dispose()
@@ -63,6 +64,7 @@ class Splash extends Reporter { splash =>
           contents.repaint()
           if (!win.isVisible) {
             win.setVisible(true)
+            if (hasDialog) win.toBack()
           }
           repaintContents()
         }
@@ -99,16 +101,25 @@ class Splash extends Reporter { splash =>
     }
   }
 
+  private def withDialog[A](body: => A): A = {
+    foreground()
+    hasDialog = true
+    val res = try {
+      blocking(body)
+    } finally  {
+      hasDialog = false
+    }
+    res
+  }
+
   override def showMessage(text: String, isError: Boolean): Future[Unit] = {
     val pr = Promise[Unit]()
     EventQueue.invokeLater(() => {
       val title = Launcher.name // if (isError) "Error" else "Information"
       val tpe   = if (isError) JOptionPane.ERROR_MESSAGE else JOptionPane.INFORMATION_MESSAGE
-      foreground()
-      blocking {
+      withDialog {
         JOptionPane.showMessageDialog(null, text, title, tpe)
       }
-      // win.toFront()
       pr.success(())
     })
     pr.future
@@ -156,11 +167,9 @@ class Splash extends Reporter { splash =>
         })
       }
       // modal! make sure it comes after `extra.foreach`
-      foreground()
-      val code = blocking {
+      val code = withDialog {
         JOptionPane.showConfirmDialog(null, msg, title, tpe, JOptionPane.QUESTION_MESSAGE)
       }
-      // win.toFront()
       val res = if (isYesNo) code == JOptionPane.YES_OPTION else code == JOptionPane.OK_OPTION
       pr.success(res)
     })
@@ -174,8 +183,7 @@ class Splash extends Reporter { splash =>
       val title   = Launcher.name
       val itemsA  = items.toArray[AnyRef]
       val initVal = default.orNull
-      foreground()
-      val code = blocking {
+      val code = withDialog {
         JOptionPane.showInputDialog(null, text, title,
           JOptionPane.QUESTION_MESSAGE, null, itemsA, initVal)
       }
