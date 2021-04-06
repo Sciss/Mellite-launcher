@@ -17,18 +17,12 @@ import scala.concurrent.{Future, blocking}
 import scala.util.Try
 import scala.concurrent.ExecutionContext.Implicits._
 
-class ConsoleReporter extends Thread("reporter") with Reporter {
+class ConsoleReporter extends Reporter {
   private var _status   = ""
   private var _version  = ""
   private var _progress = -1.0f
   private var _lastProg = 0f
-  private var _disposed = false
-  private val sync      = new AnyRef
-
-  override def run(): Unit = sync.synchronized(while (!_disposed) sync.wait())
-
-  setDaemon(false)
-  start()
+  private val alive     = new KeepAlive
 
   override def status: String = _status
 
@@ -57,12 +51,7 @@ class ConsoleReporter extends Thread("reporter") with Reporter {
     }
   }
 
-  override def dispose(): Unit = {
-    sync.synchronized {
-      _disposed = true
-      sync.notify()
-    }
-  }
+  override def dispose(): Unit = alive.dispose()
 
   override def showMessage(text: String, isError: Boolean): Future[Unit] = {
     val s = if (isError) "ERROR" else "INFO"

@@ -29,18 +29,21 @@ class Splash extends Reporter { splash =>
 
   private val sync      = new AnyRef
   private var hasWin    = false
+  private val alive     = new KeepAlive
 
-  override def dispose(): Unit =
+  override def dispose(): Unit = {
+    alive.dispose()
     sync.synchronized {
       if (hasWin) win.dispose()
     }
+  }
 
   private lazy val win: JWindow =
     sync.synchronized {
       hasWin = true
       Window
     }
-    
+
   private object Window extends JWindow {
     setSize(480, 160)
     setLocationRelativeTo(null)
@@ -90,7 +93,7 @@ class Splash extends Reporter { splash =>
   override def showMessage(text: String, isError: Boolean): Future[Unit] = {
     val pr = Promise[Unit]()
     EventQueue.invokeLater(() => {
-      val title = if (isError) "Error" else "Information"
+      val title = Launcher.name // if (isError) "Error" else "Information"
       val tpe   = if (isError) JOptionPane.ERROR_MESSAGE else JOptionPane.INFORMATION_MESSAGE
       foreground()
       blocking {
@@ -105,7 +108,7 @@ class Splash extends Reporter { splash =>
   override def showConfirm(text: String, isYesNo: Boolean, extra: Future[Seq[String]]): Future[Boolean] = {
     val pr = Promise[Boolean]()
     EventQueue.invokeLater(() => {
-      val title   = "Choose"
+      val title   = Launcher.name
       val tpe     = if (isYesNo) JOptionPane.YES_NO_OPTION else JOptionPane.OK_CANCEL_OPTION
       val msg     = new JPanel(new BorderLayout(0, 8))
       val text1   = if (!text.contains("\n")) text else {
@@ -159,7 +162,7 @@ class Splash extends Reporter { splash =>
                            extra: String => Future[Seq[String]]): Future[Option[String]] = {
     val pr = Promise[Option[String]]()
     EventQueue.invokeLater(() => {
-      val title   = "Choose"
+      val title   = Launcher.name
       val itemsA  = items.toArray[AnyRef]
       val initVal = default.orNull
       foreground()

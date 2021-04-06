@@ -34,9 +34,9 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 object Launcher {
-  def name    : String = buildInfString("name" )
-  def version : String = buildInfString("version" )
-  def fullName: String = s"$name v$version"
+  lazy val name     : String = buildInfString("name" )
+  lazy val version  : String = buildInfString("version" )
+  lazy val fullName : String = s"$name v$version"
 
   private def buildInfString(key: String): String = try {
     val clazz = Class.forName("de.sciss.mellite.LauncherInfo")
@@ -311,10 +311,10 @@ object Launcher {
       run(inst0)
     } else {
       UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel")
-      EventQueue.invokeLater { () =>
+//      EventQueue.invokeLater { () =>
         implicit val r: Reporter = new Splash
         run(inst0)
-      }
+//      }
     }
 
   private val appMod = Module(Organization(groupId), ModuleName(artifactId))
