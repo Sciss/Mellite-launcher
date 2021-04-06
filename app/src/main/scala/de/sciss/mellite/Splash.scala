@@ -36,17 +36,20 @@ class Splash extends Reporter { splash =>
     alive.dispose()
     sync.synchronized {
       _disposed = true
-      if (hasWin) win.dispose()
+      if (hasWin) EventQueue.invokeLater(() => {
+        win.setVisible(false)
+        win.dispose()
+      })
     }
   }
 
   private lazy val win: JWindow =
     sync.synchronized {
       hasWin = true
-      Window
+      new Window
     }
 
-  private object Window extends JWindow {
+  private class Window extends JWindow {
     setSize(480, 160)
     setLocationRelativeTo(null)
     //  setVisible(true)
@@ -60,9 +63,8 @@ class Splash extends Reporter { splash =>
           contents.repaint()
           if (!win.isVisible) {
             win.setVisible(true)
-          } else {
-            repaintContents()
           }
+          repaintContents()
         }
       }
     })
