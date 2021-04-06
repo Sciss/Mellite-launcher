@@ -677,8 +677,8 @@ object Launcher {
         val s = line.substring(pat.length)
         tokenizeArgString(s).drop(1)  // note: contains command name
       }
-      println("WINDOWS HACK:")
-      println(res)
+      // println("WINDOWS HACK:")
+      // println(res)
       res
     }
     finally {
