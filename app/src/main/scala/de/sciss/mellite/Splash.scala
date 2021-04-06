@@ -13,7 +13,7 @@
 
 package de.sciss.mellite
 
-import java.awt.{BorderLayout, Color, Dimension, EventQueue, Font, Graphics, Graphics2D, RenderingHints}
+import java.awt.{BorderLayout, Color, Desktop, Dimension, EventQueue, Font, Graphics, Graphics2D, RenderingHints}
 import javax.swing.text.html.HTMLEditorKit
 import javax.swing.{JComponent, JLabel, JOptionPane, JPanel, JScrollPane, JTextPane, JWindow, ScrollPaneConstants, SwingUtilities}
 import scala.concurrent.ExecutionContext.Implicits._
@@ -37,8 +37,10 @@ class Splash extends JWindow with Reporter { splash =>
   override def status: String = _status
   override def status_=(value: String): Unit = if (_status != value) {
     _status = value
-    if (!isVisible) setVisible(true)
     repaintContents()
+    if (!isVisible) {
+      setVisible(true)
+    }
   }
 
   override def version: String = _version
@@ -56,12 +58,24 @@ class Splash extends JWindow with Reporter { splash =>
     }
   }
 
+  private def foreground(): Unit = {
+    if (Desktop.isDesktopSupported) {
+      val d = Desktop.getDesktop
+      if (d.isSupported(Desktop.Action.APP_REQUEST_FOREGROUND)) {
+        d.requestForeground(false)
+      }
+    }
+  }
+
   override def showMessage(text: String, isError: Boolean): Future[Unit] = {
     val pr = Promise[Unit]()
     EventQueue.invokeLater(() => {
       val title = if (isError) "Error" else "Information"
       val tpe   = if (isError) JOptionPane.ERROR_MESSAGE else JOptionPane.INFORMATION_MESSAGE
-      JOptionPane.showMessageDialog(null, text, title, tpe)
+      foreground()
+      blocking {
+        JOptionPane.showMessageDialog(null, text, title, tpe)
+      }
       splash.toFront()
       pr.success(())
     })
@@ -109,11 +123,12 @@ class Splash extends JWindow with Reporter { splash =>
           }
         })
       }
-      splash.toFront()
       // modal! make sure it comes after `extra.foreach`
+      foreground()
       val code = blocking {
         JOptionPane.showConfirmDialog(null, msg, title, tpe, JOptionPane.QUESTION_MESSAGE)
       }
+      splash.toFront()
       val res = if (isYesNo) code == JOptionPane.YES_OPTION else code == JOptionPane.OK_OPTION
       pr.success(res)
     })
@@ -127,9 +142,12 @@ class Splash extends JWindow with Reporter { splash =>
       val title   = "Choose"
       val itemsA  = items.toArray[AnyRef]
       val initVal = default.orNull
-      val code    = JOptionPane.showInputDialog(null, text, title,
-        JOptionPane.QUESTION_MESSAGE, null, itemsA, initVal)
-      val res     = if (code == null) None else items.find(_ == code) // if (code < 0) None else Some(items(code))
+      foreground()
+      val code = blocking {
+        JOptionPane.showInputDialog(null, text, title,
+          JOptionPane.QUESTION_MESSAGE, null, itemsA, initVal)
+      }
+      val res = if (code == null) None else items.find(_ == code) // if (code < 0) None else Some(items(code))
       splash.toFront()
       pr.success(res)
     })
