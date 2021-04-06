@@ -675,7 +675,7 @@ object Launcher {
       }) ()
       val res = if (line == null) Nil else {
         val s = line.substring(pat.length)
-        tokenizeArgString(s)
+        tokenizeArgString(s).drop(1)  // note: contains command name
       }
       println("WINDOWS HACK:")
       println(res)
@@ -712,7 +712,7 @@ object Launcher {
       val argsIn  = if (argsInOpt.isPresent || !isWindows) argsInOpt.get().toList else windowsProcessArgsHack(ph)
 
       if (cfg.verbose) {
-        println(s"CMD      = '$cmd''")
+        println(s"CMD      = '$cmd'")
         println(s"ARGS IN  = ${argsIn.mkString("'", "', '", "'")}")
       }
 
