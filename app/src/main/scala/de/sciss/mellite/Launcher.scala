@@ -24,6 +24,8 @@ import net.harawata.appdirs.AppDirsFactory
 import java.awt.EventQueue
 import java.io.{File, FileInputStream, FileOutputStream}
 import java.util.{Date, Properties => JProperties}
+import javax.swing.UIManager
+import javax.swing.plaf.metal.MetalLookAndFeel
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits._
@@ -309,6 +311,7 @@ object Launcher {
       implicit val r: Reporter = new ConsoleReporter
       run(inst0)
     } else {
+      UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel")
       EventQueue.invokeLater { () =>
         implicit val r: Reporter = new Splash
         run(inst0)
