@@ -486,7 +486,7 @@ object Launcher {
     }
 
     val futFiles: Future[Seq[File]] = futFetch.map { fetched =>
-      r.status = "Fetched libraries."
+      r.status = "Ready." // "Fetched libraries."
       if (cfg.verbose) {
         println("------ Artifacts ------")
         fetched.detailedArtifacts.foreach { case (dep, pub, art, f) =>

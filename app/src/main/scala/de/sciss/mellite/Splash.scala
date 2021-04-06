@@ -29,11 +29,13 @@ class Splash extends Reporter { splash =>
 
   private val sync      = new AnyRef
   private var hasWin    = false
+  private var _disposed = false
   private val alive     = new KeepAlive
 
   override def dispose(): Unit = {
     alive.dispose()
     sync.synchronized {
+      _disposed = true
       if (hasWin) win.dispose()
     }
   }
@@ -53,17 +55,22 @@ class Splash extends Reporter { splash =>
 
   private def repaintContents(): Unit =
     EventQueue.invokeLater(() => {
-      contents.repaint()
-      if (!win.isVisible) {
-        win.setVisible(true)
-      } else {
-        repaintContents()
+      sync.synchronized {
+        if (!_disposed) {
+          contents.repaint()
+          if (!win.isVisible) {
+            win.setVisible(true)
+          } else {
+            repaintContents()
+          }
+        }
       }
     })
 
   override def status: String = _status
   override def status_=(value: String): Unit = if (_status != value) {
     _status = value
+    repaintContents()
   }
 
   override def version: String = _version
