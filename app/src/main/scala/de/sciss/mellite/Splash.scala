@@ -15,7 +15,7 @@ package de.sciss.mellite
 
 import java.awt.{BorderLayout, Color, Dimension, EventQueue, Font, Graphics, Graphics2D, RenderingHints}
 import javax.swing.text.html.HTMLEditorKit
-import javax.swing.{JLabel, JOptionPane, JPanel, JScrollPane, JTextPane, JWindow, ScrollPaneConstants, SwingUtilities}
+import javax.swing.{JComponent, JLabel, JOptionPane, JPanel, JScrollPane, JTextPane, JWindow, ScrollPaneConstants, SwingUtilities}
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.{Future, Promise, blocking}
 import scala.math.min
@@ -30,18 +30,21 @@ class Splash extends JWindow with Reporter { splash =>
   setSize(480, 160)
   setLocationRelativeTo(null)
 //  setVisible(true)
+  splash.setContentPane(contents)
+
+  private def repaintContents(): Unit = contents.repaint()
 
   override def status: String = _status
   override def status_=(value: String): Unit = if (_status != value) {
     _status = value
     if (!isVisible) setVisible(true)
-    repaint()
+    repaintContents()
   }
 
   override def version: String = _version
   override def version_=(value: String): Unit = if (_version != value) {
     _version = value
-    repaint()
+    repaintContents()
   }
 
   override def progress: Float = _progress
@@ -49,7 +52,7 @@ class Splash extends JWindow with Reporter { splash =>
     val clip = min(value, 1f)
     if (_progress != clip) {
       _progress = clip
-      repaint()
+      repaintContents()
     }
   }
 
@@ -133,51 +136,54 @@ class Splash extends JWindow with Reporter { splash =>
     pr.future
   }
 
-  override def paint(g: Graphics): Unit = {
-    super.paint(g)
-    val g2 = g.asInstanceOf[Graphics2D]
-    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
-    g2.setColor(Color.darkGray)
-    val w = getWidth
-    val h = getHeight
-    g2.fillRect(0, 0, w, h)
-    g2.setColor(Color.white)
-    val str = "Launching Mellite"
-    g2.setFont(fontHead)
-    val fmHead  = g2.getFontMetrics()
-    val tw      = fmHead.stringWidth(str)
-    var ty      = 16
-    g2.drawString(str, (w - tw) >> 1, ty + fmHead.getAscent)
-    ty += fmHead.getHeight
-    g2.setFont(fontBody)
-    val fmBody  = g2.getFontMetrics()
+  private object contents extends JComponent {
+    override def paintComponent(g: Graphics): Unit = {
+      super.paintComponent(g)
+//      super.paint(g)
+      val g2 = g.asInstanceOf[Graphics2D]
+      g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+      g2.setColor(Color.darkGray)
+      val w = getWidth
+      val h = getHeight
+      g2.fillRect(0, 0, w, h)
+      g2.setColor(Color.white)
+      val str = "Launching Mellite"
+      g2.setFont(fontHead)
+      val fmHead  = g2.getFontMetrics()
+      val tw      = fmHead.stringWidth(str)
+      var ty      = 16
+      g2.drawString(str, (w - tw) >> 1, ty + fmHead.getAscent)
+      ty += fmHead.getHeight
+      g2.setFont(fontBody)
+      val fmBody  = g2.getFontMetrics()
 
-    {
-      ty += 8
-      if (_version != "") {
-        val bw = fmBody.stringWidth(_version)
-        g2.drawString(_version, (w - bw) >> 1, ty + fmBody.getAscent)
+      {
+        ty += 8
+        if (_version != "") {
+          val bw = fmBody.stringWidth(_version)
+          g2.drawString(_version, (w - bw) >> 1, ty + fmBody.getAscent)
+        }
+        ty += fmBody.getHeight
       }
-      ty += fmBody.getHeight
-    }
 
-    {
-      ty += 8
-      if (_status != "") {
-        val bw = fmBody.stringWidth(_status)
-        g2.drawString(_status, (w - bw) >> 1, ty + fmBody.getAscent)
+      {
+        ty += 8
+        if (_status != "") {
+          val bw = fmBody.stringWidth(_status)
+          g2.drawString(_status, (w - bw) >> 1, ty + fmBody.getAscent)
+        }
+        ty += fmBody.getHeight
       }
-      ty += fmBody.getHeight
-    }
-    
-    if (_progress >= 0.0) {
-      val pwo = w - 96
-      val pwi = (pwo * _progress + 0.5).toInt
-      val px  = 48
-      val ph  = 12
-      ty += 16
-      g2.fillRoundRect(px, ty, pwi, ph, 6, 6)
-      g2.drawRoundRect(px, ty, pwo, ph, 6, 6)
+
+      if (_progress >= 0.0) {
+        val pwo = w - 96
+        val pwi = (pwo * _progress + 0.5).toInt
+        val px  = 48
+        val ph  = 12
+        ty += 16
+        g2.fillRoundRect(px, ty, pwi, ph, 6, 6)
+        g2.drawRoundRect(px, ty, pwo, ph, 6, 6)
+      }
     }
   }
 }

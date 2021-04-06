@@ -25,7 +25,6 @@ import java.awt.EventQueue
 import java.io.{File, FileInputStream, FileOutputStream}
 import java.util.{Date, Properties => JProperties}
 import javax.swing.UIManager
-import javax.swing.plaf.metal.MetalLookAndFeel
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits._
