@@ -20,27 +20,47 @@ import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.{Future, Promise, blocking}
 import scala.math.min
 
-class Splash extends JWindow with Reporter { splash =>
+class Splash extends Reporter { splash =>
   private var _status   = ""
   private var _version  = ""
   private var _progress = -1.0f
   private val fontHead  = new Font(Font.SANS_SERIF, Font.BOLD  , 18)
   private val fontBody  = new Font(Font.SANS_SERIF, Font.PLAIN , 16)
 
-  setSize(480, 160)
-  setLocationRelativeTo(null)
-//  setVisible(true)
-  splash.setContentPane(contents)
+  private val sync      = new AnyRef
+  private var hasWin    = false
 
-  private def repaintContents(): Unit = contents.repaint()
+  override def dispose(): Unit =
+    sync.synchronized {
+      if (hasWin) win.dispose()
+    }
+
+  private lazy val win: JWindow =
+    sync.synchronized {
+      hasWin = true
+      Window
+    }
+    
+  private object Window extends JWindow {
+    setSize(480, 160)
+    setLocationRelativeTo(null)
+    //  setVisible(true)
+    setContentPane(contents)
+  }
+
+  private def repaintContents(): Unit =
+    EventQueue.invokeLater(() => {
+      contents.repaint()
+      if (!win.isVisible) {
+        win.setVisible(true)
+      } else {
+        repaintContents()
+      }
+    })
 
   override def status: String = _status
   override def status_=(value: String): Unit = if (_status != value) {
     _status = value
-    repaintContents()
-    if (!isVisible) {
-      setVisible(true)
-    }
   }
 
   override def version: String = _version
@@ -76,7 +96,7 @@ class Splash extends JWindow with Reporter { splash =>
       blocking {
         JOptionPane.showMessageDialog(null, text, title, tpe)
       }
-      splash.toFront()
+      // win.toFront()
       pr.success(())
     })
     pr.future
@@ -128,7 +148,7 @@ class Splash extends JWindow with Reporter { splash =>
       val code = blocking {
         JOptionPane.showConfirmDialog(null, msg, title, tpe, JOptionPane.QUESTION_MESSAGE)
       }
-      splash.toFront()
+      // win.toFront()
       val res = if (isYesNo) code == JOptionPane.YES_OPTION else code == JOptionPane.OK_OPTION
       pr.success(res)
     })
@@ -148,7 +168,7 @@ class Splash extends JWindow with Reporter { splash =>
           JOptionPane.QUESTION_MESSAGE, null, itemsA, initVal)
       }
       val res = if (code == null) None else items.find(_ == code) // if (code < 0) None else Some(items(code))
-      splash.toFront()
+      // win.toFront()
       pr.success(res)
     })
     pr.future
