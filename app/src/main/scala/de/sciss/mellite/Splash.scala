@@ -14,10 +14,11 @@
 package de.sciss.mellite
 
 import java.awt.{BorderLayout, Color, Desktop, Dimension, EventQueue, Font, Graphics, Graphics2D, RenderingHints}
+import javax.swing.event.{AncestorEvent, AncestorListener}
 import javax.swing.text.html.HTMLEditorKit
 import javax.swing.{JComponent, JLabel, JOptionPane, JPanel, JScrollPane, JTextPane, JWindow, ScrollPaneConstants, SwingUtilities}
 import scala.concurrent.ExecutionContext.Implicits._
-import scala.concurrent.{Future, Promise, blocking}
+import scala.concurrent.{Future, Promise}
 import scala.math.min
 
 class Splash extends Reporter { splash =>
@@ -31,7 +32,7 @@ class Splash extends Reporter { splash =>
   private var hasWin    = false
   private var _disposed = false
   private val alive     = new KeepAlive
-  private var hasDialog = false
+//  private var hasDialog = false
 
   override def dispose(): Unit = {
     alive.dispose()
@@ -64,7 +65,7 @@ class Splash extends Reporter { splash =>
           contents.repaint()
           if (!win.isVisible) {
             win.setVisible(true)
-            if (hasDialog) win.toBack()
+//            if (hasDialog) win.toBack()
           }
           repaintContents()
         }
@@ -101,15 +102,17 @@ class Splash extends Reporter { splash =>
     }
   }
 
-  private def withDialog[A](body: => A): A = {
-    foreground()
-    hasDialog = true
-    val res = try {
-      blocking(body)
-    } finally  {
-      hasDialog = false
-    }
-    res
+  private def withDialog[A](c: JComponent)(body: => A): A = {
+    c.addAncestorListener(new AncestorListener {
+      override def ancestorAdded(e: AncestorEvent): Unit = {
+        foreground()
+        Option(SwingUtilities.getWindowAncestor(c)).foreach(_.setAlwaysOnTop(true))
+      }
+
+      override def ancestorRemoved  (e: AncestorEvent): Unit = ()
+      override def ancestorMoved    (e: AncestorEvent): Unit = ()
+    })
+    body
   }
 
   override def showMessage(text: String, isError: Boolean): Future[Unit] = {
@@ -117,8 +120,9 @@ class Splash extends Reporter { splash =>
     EventQueue.invokeLater(() => {
       val title = Launcher.name // if (isError) "Error" else "Information"
       val tpe   = if (isError) JOptionPane.ERROR_MESSAGE else JOptionPane.INFORMATION_MESSAGE
-      withDialog {
-        JOptionPane.showMessageDialog(null, text, title, tpe)
+      val msg   = new JLabel(text)
+      withDialog(msg) {
+        JOptionPane.showMessageDialog(null, msg, title, tpe)
       }
       pr.success(())
     })
@@ -167,7 +171,7 @@ class Splash extends Reporter { splash =>
         })
       }
       // modal! make sure it comes after `extra.foreach`
-      val code = withDialog {
+      val code = withDialog(msg) {
         JOptionPane.showConfirmDialog(null, msg, title, tpe, JOptionPane.QUESTION_MESSAGE)
       }
       val res = if (isYesNo) code == JOptionPane.YES_OPTION else code == JOptionPane.OK_OPTION
@@ -183,8 +187,9 @@ class Splash extends Reporter { splash =>
       val title   = Launcher.name
       val itemsA  = items.toArray[AnyRef]
       val initVal = default.orNull
-      val code = withDialog {
-        JOptionPane.showInputDialog(null, text, title,
+      val msg     = new JLabel(text)
+      val code = withDialog(msg) {
+        JOptionPane.showInputDialog(null, msg, title,
           JOptionPane.QUESTION_MESSAGE, null, itemsA, initVal)
       }
       val res = if (code == null) None else items.find(_ == code) // if (code < 0) None else Some(items(code))
