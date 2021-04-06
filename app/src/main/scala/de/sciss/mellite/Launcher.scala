@@ -23,6 +23,7 @@ import net.harawata.appdirs.AppDirsFactory
 
 import java.awt.EventQueue
 import java.io.{BufferedReader, File, FileInputStream, FileOutputStream, InputStreamReader}
+import java.util.regex.Pattern
 import java.util.{Date, Properties => JProperties}
 import javax.swing.UIManager
 import scala.annotation.tailrec
@@ -659,7 +660,8 @@ object Launcher {
       case _        => false
     })
 
-  private def fuckOracle(ph: ProcessHandle): List[String] = {
+  // cf. https://stackoverflow.com/questions/46767418/how-to-get-commandline-arguments-of-process-in-java-9
+  private def windowsProcessArgsHack(ph: ProcessHandle): List[String] = {
     val pAux = new ProcessBuilder("wmic", "process", "where", s"ProcessID=${ph.pid}", "get",
       "commandline", "/format:list").redirectErrorStream(true).start()
     val ir  = new InputStreamReader(pAux.getInputStream)
@@ -673,7 +675,7 @@ object Launcher {
       }) ()
       val res = if (line == null) Nil else {
         val s = line.substring(pat.length)
-        s :: Nil
+        tokenizeArgString(s)
       }
       println("WINDOWS HACK:")
       println(res)
@@ -682,6 +684,18 @@ object Launcher {
     finally {
       ir.close()
     }
+  }
+
+  // cf. https://stackoverflow.com/questions/3366281/tokenizing-a-string-but-ignoring-delimiters-within-quotes
+  private def tokenizeArgString(s: String): List[String] = {
+    val b = List.newBuilder[String]
+    val m = Pattern.compile("\"([^\"]*)\"|(\\S+)").matcher(s)
+    while (m.find()) {
+      val arg0  = m.group(1)
+      val arg   = if (arg0 != null) arg0 else m.group(2)
+      b += arg
+    }
+    b.result()
   }
 
   private def isWindows: Boolean = sys.props("os.name").contains("Windows")
@@ -695,7 +709,7 @@ object Launcher {
       val pi      = ph.info()
       val cmd     = pi.command().get()
       val argsInOpt = pi.arguments()
-      val argsIn  = if (argsInOpt.isPresent || !isWindows) argsInOpt.get().toList else fuckOracle(ph)
+      val argsIn  = if (argsInOpt.isPresent || !isWindows) argsInOpt.get().toList else windowsProcessArgsHack(ph)
 
       if (cfg.verbose) {
         println(s"CMD      = '$cmd''")
