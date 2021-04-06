@@ -22,7 +22,7 @@ import de.sciss.osc
 import net.harawata.appdirs.AppDirsFactory
 
 import java.awt.EventQueue
-import java.io.{File, FileInputStream, FileOutputStream}
+import java.io.{BufferedReader, File, FileInputStream, FileOutputStream, InputStreamReader}
 import java.util.{Date, Properties => JProperties}
 import javax.swing.UIManager
 import scala.annotation.tailrec
@@ -659,6 +659,33 @@ object Launcher {
       case _        => false
     })
 
+  private def fuckOracle(ph: ProcessHandle): List[String] = {
+    val pAux = new ProcessBuilder("wmic", "process", "where", s"ProcessID=${ph.pid}", "get",
+      "commandline", "/format:list").redirectErrorStream(true).start()
+    val ir  = new InputStreamReader(pAux.getInputStream)
+    try {
+      val br  = new BufferedReader(ir)
+      val pat = "CommandLine="
+      var line: String = null
+      while ({
+        line = br.readLine()
+        line != null && !line.startsWith(pat)
+      }) ()
+      val res = if (line == null) Nil else {
+        val s = line.substring(pat.length)
+        s :: Nil
+      }
+      println("WINDOWS HACK:")
+      println(res)
+      res
+    }
+    finally {
+      ir.close()
+    }
+  }
+
+  private def isWindows: Boolean = sys.props("os.name").contains("Windows")
+
   def runProcess(inst0: Installation, futInst: Future[Installation])
                 (implicit r: Reporter, cfg: Config,
                  cacheResolve: FileCache[Task]): Future[RunningProcess] = {
@@ -667,7 +694,8 @@ object Launcher {
       val ph      = ProcessHandle.current()
       val pi      = ph.info()
       val cmd     = pi.command().get()
-      val argsIn  = pi.arguments().get().toList
+      val argsInOpt = pi.arguments()
+      val argsIn  = if (argsInOpt.isPresent || !isWindows) argsInOpt.get().toList else fuckOracle(ph)
 
       if (cfg.verbose) {
         println(s"CMD      = '$cmd''")
