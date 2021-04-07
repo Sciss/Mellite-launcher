@@ -11,6 +11,10 @@ Maven Central artifacts retrieved by Coursier. When it is run the first time or 
 happens, the launcher checks online for the latest Mellite version and installs it (or prompts the user to confirm
 update if already running a full version).
 
+![download splash screen](images/splash-downloading.png)
+
+![update-available dialog](images/dialog-update-available.png)
+
 In the future, it will be the preferred way to install and update
 Mellite. The idea is to avoid having to upload hundreds and hundreds
 of megabytes of new application artifacts for small updates, and to avoid having to build platform specific
@@ -47,10 +51,14 @@ use `--offline` to completely skip automatic update checks. The update
 check period can be adjusted in the Mellite application preferences.
 You can force an unscheduled check using `--check-update`. Normally, the
 checks are only performed for versions of Mellite newer than the currently
-installed one. You can override this behaviour with `--select-version`,
+installed one.
+
+You can override this behaviour with `--select-version`,
 which allows you to up- or downgrade to any published version of Mellite,
 which can be useful if there is a newly introduced bug, or you need to open
 a legacy workspace.
+
+![select-version dialog](images/dialog-select-version.png)
 
 Unless `--offline` is selected, using the launcher also allows Mellite to be restarted
 from its preferences dialog when making changes that require restart, such as changing
@@ -91,7 +99,7 @@ then close the splash screen and join the child process until its termination.
 
 -----
 
-## creating new releases
+## creating new releases of the launcher itself
 
 This section is an aide-mémoire for me in releasing stable versions.
 
