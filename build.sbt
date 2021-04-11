@@ -2,7 +2,7 @@ import com.typesafe.sbt.packager.linux.LinuxPackageMapping
 
 lazy val baseName           = "Mellite-launcher"
 lazy val baseNameL          = baseName.toLowerCase()
-lazy val projectVersion     = "0.1.0"
+lazy val projectVersion     = "0.1.1"
 lazy val launcherMainClass  = "de.sciss.mellite.Launcher"
 lazy val appDescription     = "An environment for creating experimental computer-based music and sound art"
 lazy val authorName         = "Hanns Holger Rutz"

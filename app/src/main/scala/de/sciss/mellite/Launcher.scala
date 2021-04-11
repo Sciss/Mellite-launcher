@@ -92,12 +92,17 @@ object Launcher {
         case NonFatal(_) => ()
       }
       val currentVersion  = p.getProperty(KeyAppVersion, "")
+      val launcherVersion = p.getProperty(KeyLauncherVersion)
       val lastUpdateTime  = if (currentVersion.isEmpty) Long.MinValue else
         Option(p.getProperty(KeyLastUpdate)).flatMap(_.toLongOption).getOrElse(Long.MinValue)
       val nextUpdateTime  = Option(p.getProperty(KeyNextUpdate)).flatMap(_.toLongOption)
         .getOrElse(System.currentTimeMillis())
-      val updateInterval  = Option(p.getProperty(KeyUpdateInterval)).flatMap(_.toLongOption)
-        .getOrElse(604800000L)  // defaults to one week -- 7 * 24 * 60 * 60 * 1000L
+      // unfortunately that field was wrongly written in v0.1.0
+      val updateIntervalOpt = if (launcherVersion == "0.1.0") None else {
+        Option(p.getProperty(KeyUpdateInterval)).flatMap(_.toLongOption)
+      }
+      // defaults to one week -- 7 * 24 * 60 * 60 * 1000L
+      val updateInterval  = updateIntervalOpt.getOrElse(604800000L)
 
       def getJars(key: String) = {
         val v = p.getProperty(key)
@@ -127,7 +132,7 @@ object Launcher {
         p.put(KeyAppVersion     , i.currentVersion)
         p.put(KeyLastUpdate     , i.lastUpdateTime.toString)
         p.put(KeyNextUpdate     , i.nextUpdateTime.toString)
-        p.put(KeyUpdateInterval , i.nextUpdateTime.toString)
+        p.put(KeyUpdateInterval , i.updateInterval.toString)
         putJars(KeyJars   , i.jars    )
         putJars(KeyOldJars, i.oldJars )
         cfg.propFile.getParentFile.mkdirs()
