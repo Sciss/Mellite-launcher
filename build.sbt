@@ -2,7 +2,7 @@ import com.typesafe.sbt.packager.linux.LinuxPackageMapping
 
 lazy val baseName           = "Mellite-launcher"
 lazy val baseNameL          = baseName.toLowerCase()
-lazy val projectVersion     = "0.1.1"
+lazy val projectVersion     = "0.1.2-SNAPSHOT"
 lazy val launcherMainClass  = "de.sciss.mellite.Launcher"
 lazy val appDescription     = "An environment for creating experimental computer-based music and sound art"
 lazy val authorName         = "Hanns Holger Rutz"
@@ -24,7 +24,7 @@ lazy val deps = new {
 
 lazy val commonSettings = Seq(
   version       := projectVersion,
-  scalaVersion  := "2.13.5",
+  scalaVersion  := "2.13.6",
   organization  := "de.sciss",
   homepage      := Some(url(s"https://git.iem.at/$baseName")),
   description   := "Application launcher and updater for Mellite",

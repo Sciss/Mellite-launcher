@@ -101,8 +101,9 @@ object Launcher {
       val updateIntervalOpt = if (launcherVersion == "0.1.0") None else {
         Option(p.getProperty(KeyUpdateInterval)).flatMap(_.toLongOption)
       }
-      // defaults to one week -- 7 * 24 * 60 * 60 * 1000L
-      val updateInterval  = updateIntervalOpt.getOrElse(604800000L)
+      // no longer defaults to one week -- 7 * 24 * 60 * 60 * 1000L
+      // but disabled, see issue #1
+      val updateInterval  = updateIntervalOpt.getOrElse(Long.MaxValue) // 604800000L
 
       def getJars(key: String) = {
         val v = p.getProperty(key)
@@ -617,7 +618,7 @@ object Launcher {
     val now = System.currentTimeMillis()
 
     implicit lazy val cacheResolve: FileCache[Task] = FileCache[Task](cacheDir)
-      .withTtl(1.hour)  // XXX TODO which value here
+      .withTtl(1.minute)  // XXX TODO which value here
 
     val autoCheck = now >= inst0.nextUpdateTime
     if (verbose) {
