@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Mellite
-Version=0.1.2
+Version=0.1.3
 GenericName=Mellite
 Comment=Mellite Computer Music Environment
 Exec=/usr/share/mellite-launcher/bin/mellite-launcher %F

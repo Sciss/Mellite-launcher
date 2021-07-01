@@ -205,7 +205,7 @@ object Launcher {
   private val Switch_AppHelp      = "--app-help"
 
   private val Switch_Headless     = "--headless"
-  private val Switch_HeadlessS    = "-h"
+//  private val Switch_HeadlessS    = "-h"
 
   def printHelp(): Unit = {
     val nameArg = "<name>"
@@ -218,7 +218,7 @@ object Launcher {
         |  $Switch_Offline        do not check online for updates.
         |  $Switch_CheckUpdate   force update check.
         |  $Switch_SelectVersion force version selection (up- or downgrade).
-        |  $Switch_Headless, $Switch_HeadlessS   headless mode (no GUI windows). Passed on to the application.
+        |  $Switch_Headless       headless mode (no GUI windows). Passed on to the application.
         |  $Switch_Prefix $nameArg  installation prefix (default: '$DefaultPrefix'). Allows to install multiple versions.
         |  $Switch_List           list installed prefixes and quit.
         |  $Switch_Remove         remove the installation data for given prefix, and quit.
@@ -249,7 +249,7 @@ object Launcher {
 
     while (ai < args.length) {
       args(ai) match {
-        case Switch_Headless | Switch_HeadlessS => headless   = true
+        case Switch_Headless                    => headless   = true  // note: -h is reserved by java
         case Switch_Verbose  | Switch_VerboseS  => verbose    = true
         case Switch_CheckUpdate                 => checkNow   = true
         case Switch_Offline                     => offline    = true
@@ -740,11 +740,12 @@ object Launcher {
       val hasAPI1   = !cfg.appHelp && Version(inst1.currentVersion) >= Version(Mellite_API1)
       val _hasOSC   = /*cfg.oscServer &&*/ !cfg.offline && hasAPI1
       val appArgs0  = cfg.appArgs
-      val appArgs1  = if (!cfg.appHelp) appArgs0 else "--help" :: appArgs0
-      val appArgs2  = if (!hasAPI1 || cfg.prefix == DefaultPrefix) appArgs1 else "--prefix" :: cfg.prefix :: appArgs1
-      val appArgs   = if (!_hasOSC) appArgs2 else {
+      val appArgs1  = if (!cfg.appHelp  ) appArgs0 else "--help"      :: appArgs0
+      val appArgs2  = if (!cfg.headless ) appArgs1 else "--headless"  :: appArgs1
+      val appArgs3  = if (!hasAPI1 || cfg.prefix == DefaultPrefix) appArgs2 else "--prefix" :: cfg.prefix :: appArgs2
+      val appArgs   = if (!_hasOSC) appArgs3 else {
         val port = setupOSC(inst1)
-        "--launcher" :: port.toString :: appArgs2
+        "--launcher" :: port.toString :: appArgs3
       }
       val argsOut: List[String] = argsIn.take(idxSelf).patch(idxCP, newCP.mkString(File.pathSeparator) :: Nil, 1) :::
         (mainClass :: appArgs)

@@ -23,7 +23,7 @@ Mellite versions becomes as simple as publishing new Maven artifacts.
 
 The project is (C)opyright 2020–2021 by Hanns Holger Rutz. All rights reserved.
 It is released under 
-the [GNU Lesser General Public License](https://git.iem.at/sciss/Mellite-launcher/raw/main/LICENSE) v2.1+ 
+the [GNU Lesser General Public License](https://github.com/Sciss/Mellite-launcher/raw/main/LICENSE) v2.1+ 
 and comes with absolutely no warranties. To contact the author, send an e-mail to `contact at sciss.de`.
 
 ## requirements / installation
@@ -38,7 +38,7 @@ The following command line options are available:
 |`--offline`       |do not check online for updates.|
 |`--check-update`  |force update check.|
 |`--select-version`|force version selection (up- or downgrade).|
-|`--headless`, `-h`|headless mode (no GUI windows). Passed on to the application.|
+|`--headless`      |headless mode (no GUI windows). Passed on to the application.|
 |`--prefix <name>` |installation prefix (default: 'coursier'). Allows to install multiple versions.|
 |`--list`          |list installed prefixes and quit.|
 |`--remove`        |remove the installation data for given prefix, and quit.|
@@ -111,4 +111,4 @@ This section is an aide-mémoire for me in releasing stable versions.
 - Update the release versions in `README.md`
 - Test the app building: `sbt app/clean app/update app/test`
 - Build the native image:
-    `sbt -java-home '/home/hhrutz/Downloads/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9_11/jdk-11.0.9+11' full/universal:packageBin full/debian:packageBin`
+    `sbt -java-home '/home/hhrutz/Downloads/OpenJDK11U-jdk_x64_linux_hotspot_11.0.11_9/jdk-11.0.11+9' full/universal:packageBin full/debian:packageBin`

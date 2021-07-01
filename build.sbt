@@ -2,7 +2,7 @@ import com.typesafe.sbt.packager.linux.LinuxPackageMapping
 
 lazy val baseName           = "Mellite-launcher"
 lazy val baseNameL          = baseName.toLowerCase()
-lazy val projectVersion     = "0.1.2"
+lazy val projectVersion     = "0.1.3"
 lazy val launcherMainClass  = "de.sciss.mellite.Launcher"
 lazy val appDescription     = "An environment for creating experimental computer-based music and sound art"
 lazy val authorName         = "Hanns Holger Rutz"
@@ -26,7 +26,7 @@ lazy val commonSettings = Seq(
   version       := projectVersion,
   scalaVersion  := "2.13.6",
   organization  := "de.sciss",
-  homepage      := Some(url(s"https://git.iem.at/$baseName")),
+  homepage      := Some(url(s"https://github.com/Sciss/$baseName")),
   description   := "Application launcher and updater for Mellite",
   licenses      := Seq("LGPL v2.1+" -> url("http://www.gnu.org/licenses/lgpl-2.1.txt")),
   scalacOptions ++= Seq(
@@ -39,7 +39,7 @@ lazy val commonSettings = Seq(
   },
   javacOptions ++= Seq("-source", "1.9", "-target", "1.9"),
   updateOptions := updateOptions.value.withLatestSnapshots(false),
-//  aggregate in assembly := false,
+//  assembly / aggregate := false,
 )
 
 lazy val root = project.in(file("."))
@@ -49,16 +49,16 @@ lazy val root = project.in(file("."))
   .settings(
     name    := baseName,
     version := appVersion,
-    publishArtifact in(Compile, packageBin) := false, // there are no binaries
-    publishArtifact in(Compile, packageDoc) := false, // there are no javadocs
-    publishArtifact in(Compile, packageSrc) := false, // there are no sources
+    Compile / packageBin / publishArtifact  := false, // there are no binaries
+    Compile / packageDoc / publishArtifact  := false, // there are no javadocs
+    Compile / packageSrc / publishArtifact  := false, // there are no sources
     // packagedArtifacts := Map.empty
     autoScalaLibrary := false
   )
 
 lazy val appSettings = Seq(
   description := appDescription,
-  mainClass in Compile := Some(launcherMainClass),
+  Compile / mainClass := Some(launcherMainClass),
 )
 
 lazy val app = project.in(file("app"))
@@ -85,10 +85,10 @@ lazy val app = project.in(file("app"))
     buildInfoPackage  := "de.sciss.mellite",
     buildInfoObject   := "LauncherInfo",
     // ---- packaging ----
-    packageName in Universal := s"${appNameL}_${version.value}_all",
-    name                      in Debian := appNameL,  // this is used for .deb file-name; NOT appName,
-    debianPackageDependencies in Debian ++= Seq("java11-runtime"),
-    debianPackageRecommends   in Debian ++= Seq("openjfx"), // you could run without, just the API browser won't work
+    Universal / packageName             := s"${appNameL}_${version.value}_all",
+    Debian / name                       := appNameL,  // this is used for .deb file-name; NOT appName,
+    Debian / debianPackageDependencies  ++= Seq("java11-runtime"),
+    Debian / debianPackageRecommends    ++= Seq("openjfx"), // you could run without, just the API browser won't work
   )
 
 // Determine OS version of JavaFX binaries
@@ -125,25 +125,29 @@ lazy val full = project.in(file("full"))
       "jdk.unsupported", // needed for Akka
       "java.management",
     ),
-    libraryDependencies ++= Seq("base", "swing", "controls", "graphics", "media", "web").map(jfxDep),
-    packageName in Universal := s"${appNameL}_${version.value}_${jfxClassifier}_$archSuffix",
-    name                in Debian := s"$appNameL",  // this is used for .deb file-name; NOT appName,
-    packageArchitecture in Debian := sys.props("os.arch"), // archSuffix,
+    libraryDependencies ++= {
+      // no way to get WebView OpenJFX to work on Raspbian at the moment :(
+      if (pkgDebianArch == "armhf") Nil
+      else Seq("base", "swing", "controls", "graphics", "media", "web").map(jfxDep)
+    },
+    Universal / packageName       := s"${appNameL}_${version.value}_${jfxClassifier}_$archSuffix",
+    Debian / name                 := s"$appNameL",  // this is used for .deb file-name; NOT appName,
+    Debian / packageArchitecture  := pkgDebianArch,
   )
 
 // ---- packaging ----
 
 ////////////////// fat-jar assembly
 //lazy val assemblySettings = Seq(
-//  mainClass             in assembly := Some(launcherMainClass),
-//  target                in assembly := baseDirectory.value,
-//  assemblyJarName       in assembly := s"$baseName.jar",
-//  assemblyMergeStrategy in assembly := {
+//  assembly / mainClass             := Some(launcherMainClass),
+//  assembly / target                := baseDirectory.value,
+//  assembly / assemblyJarName       := s"$baseName.jar",
+//  assembly / assemblyMergeStrategy := {
 //    case PathList("org", "xmlpull", _ @ _*) => MergeStrategy.first
 //    case PathList("org", "w3c", "dom", "events", _ @ _*) => MergeStrategy.first // bloody Apache Batik
 //    case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.first
 //    case x =>
-//      val oldStrategy = (assemblyMergeStrategy in assembly).value
+//      val oldStrategy = (assembly / assemblyMergeStrategy).value
 //      oldStrategy(x)
 //  }
 //)
@@ -154,20 +158,25 @@ lazy val pkgUniversalSettings = Seq(
   // note: do not use wildcard script-classpath, as
   // we need to be able to filter for openjfx jars
 //  scriptClasspath /* in Universal */ := Seq("*"),
-  name                      in Linux     := appName,
-  packageName               in Linux     := appNameL, // XXX TODO -- what was this for?
-//  mainClass                 in Universal := Some(launcherMainClass),
-  maintainer                in Universal := s"$authorName <$authorEMail>",
-  target      in Universal := (target in Compile).value,
+  Linux / name            := appName,
+  Linux / packageName     := appNameL, // XXX TODO -- what was this for?
+  Universal / maintainer  := s"$authorName <$authorEMail>",
+  Universal / target      := (Compile / target).value,
 )
+
+lazy val pkgDebianArch = {
+  import scala.sys.process._
+  scala.util.Try(Seq("dpkg", "--print-architecture").!!.trim).getOrElse(
+    sys.props("os.arch")
+  )
+}
 
 //////////////// debian installer
 lazy val pkgDebianSettings = Seq(
-  packageName               in Debian := appNameL,  // this is the installed package (e.g. in `apt remove <name>`).
-  packageSummary            in Debian := appDescription,
-//  mainClass                 in Debian := Some(launcherMainClass),
-  maintainer                in Debian := s"$authorName <$authorEMail>",
-  packageDescription        in Debian :=
+  Debian / packageName        := appNameL,  // this is the installed package (e.g. in `apt remove <name>`).
+  Debian / packageSummary     := appDescription,
+  Debian / maintainer         := s"$authorName <$authorEMail>",
+  Debian / packageDescription :=
     """Mellite is a computer music environment,
       | a desktop application based on SoundProcesses.
       | It manages workspaces of musical objects, including
@@ -175,9 +184,9 @@ lazy val pkgDebianSettings = Seq(
       | live improvisation sets.
       |""".stripMargin,
   // include all files in src/debian in the installed base directory
-  linuxPackageMappings      in Debian ++= {
-    val n     = appNameL // (name in Debian).value.toLowerCase
-    val dir   = (sourceDirectory in Debian).value / "debian"
+  Debian / linuxPackageMappings ++= {
+    val n     = appNameL // (Debian / name).value.toLowerCase
+    val dir   = (Debian / sourceDirectory).value / "debian"
     val f1    = (dir * "*").filter(_.isFile).get  // direct child files inside `debian` folder
     val f2    = ((dir / "doc") * "*").get
     //
